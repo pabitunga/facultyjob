@@ -10,6 +10,36 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
+
+    <!-- Firebase Init (edit ONLY the API key line below) -->
+    <script>
+      (function () {
+        // 🔧 EDIT ONLY THIS LINE:
+        const API_KEY = "PASTE_YOUR_FIREBASE_API_KEY_HERE";
+
+        // ⚠️ Leave the rest empty for now. We'll fill these later if needed.
+        const firebaseConfig = {
+          apiKey: API_KEY,
+          authDomain: "",
+          projectId: "",
+          storageBucket: "",
+          messagingSenderId: "",
+          appId: ""
+        };
+
+        try {
+          if (!firebase.apps || !firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+            // expose for app.js to use
+            window.auth = firebase.auth();
+            window.db = firebase.firestore();
+            console.log("[Firebase] Initialized");
+          }
+        } catch (e) {
+          console.warn("[Firebase] Initialization issue:", e);
+        }
+      })();
+    </script>
 </head>
 <body>
     <!-- Header -->
