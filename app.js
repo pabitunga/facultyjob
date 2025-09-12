@@ -210,6 +210,38 @@ async function forgotPassword(email) {
   try { await auth.sendPasswordResetEmail(email); showAlert("Password reset email sent to " + email + "."); }
   catch (err) { showAlert("Reset error: " + (err?.message || err)); }
 }
+// Multi-select helper
+function getMultiSelectValues(id){
+  const el = document.getElementById(id);
+  if (!el) return [];
+  return Array.from(el.options).filter(o => o.selected).map(o => o.value);
+}
+
+// Format YYYY-MM-DD to dd/mm/yyyy for display
+function formatDateDisplay(iso){
+  if (!iso) return "";
+  const [y,m,d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+}
+
+// Basic image compress (resizes large images to ~1280px, quality 0.8)
+async function compressImageToDataURL(file, maxW = 1280, maxH = 1280, quality = 0.8){
+  if (!file) return null;
+  const bitmap = await createImageBitmap(file);
+  const w = bitmap.width, h = bitmap.height;
+  let targetW = w, targetH = h;
+  if (w > maxW || h > maxH) {
+    const ratio = Math.min(maxW / w, maxH / h);
+    targetW = Math.round(w * ratio);
+    targetH = Math.round(h * ratio);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = targetW; canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+  return canvas.toDataURL("image/jpeg", quality);
+}
 
 /* ---------- Photo Upload & Profile ---------- */
 function wirePhotoUpload() {
@@ -266,15 +298,23 @@ function handlePostJob() {
 
 /* ================== JOBS (Realtime + Moderation + Archive) ================== */
 
-/* Card UI */
 function jobCardHTML(j, opts = {}){
   const desc = (j.description || "");
   const short = desc.length > 180 ? desc.slice(0,180) + "…" : desc;
+
+  const depts = Array.isArray(j.departments) ? j.departments
+                : (j.department ? [j.department] : []);
+  const levels = Array.isArray(j.levels) ? j.levels
+                : (j.level ? [j.level] : []);
+
+  const deptText  = depts.length ? depts.join(", ") : "—";
+  const levelText = levels.length ? levels.join(", ") : "—";
+
+  // badges (near-expiry/expired already computed elsewhere)
   const expireDays = daysLeft(j);
   const expired = opts.expired || isExpired(j);
   const near = !expired && expireDays != null && expireDays >= 0 && expireDays <= NEAR_EXPIRY_DAYS;
 
-  // badges
   let badge = "";
   if (expired) {
     badge = `<span class="status" style="background:#fee2e2;color:#991b1b">Expired</span>`;
@@ -283,26 +323,37 @@ function jobCardHTML(j, opts = {}){
     badge = `<span class="status">${escapeHtml(text)}</span>`;
   }
 
-  const deadlineLine = j.deadline ? `<div class="text-sm" style="color:var(--text-muted);margin-top:6px;">Deadline: ${escapeHtml(j.deadline)}</div>` : "";
+  const deadlineText = j.deadline ? formatDateDisplay(j.deadline) : null;
+  const deadlineLine = deadlineText
+    ? `<div class="text-sm" style="color:var(--text-muted);margin-top:6px;">Deadline: ${escapeHtml(deadlineText)}</div>`
+    : "";
+
+  const img = j.image ? `<img src="${j.image}" alt="Job image" class="job-image">` : "";
+
+  const applyBtn = j.applicationLink
+    ? `<a class="btn btn--primary btn--sm" href="${escapeHtml(j.applicationLink)}" target="_blank" rel="noopener">Apply</a>`
+    : `<button class="btn btn--primary btn--sm" onclick="alert('Apply flow coming soon!')">Apply</button>`;
 
   return `
     <div class="card">
       <div class="card__body">
+        ${img}
         <h3>${escapeHtml(j.title)}</h3>
         <p>${escapeHtml(j.institution)} • ${escapeHtml(j.location)}</p>
         <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
-          ${escapeHtml(j.department)} • ${escapeHtml(j.level)}
+          ${escapeHtml(deptText)} • ${escapeHtml(levelText)}
         </div>
         ${deadlineLine}
         <div style="margin-top:8px">${badge}</div>
         <p style="margin-top:8px">${escapeHtml(short)}</p>
         <div class="mt-8">
-          <button class="btn btn--primary btn--sm" onclick="alert('Apply flow coming soon!')">Apply</button>
+          ${applyBtn}
           <button class="btn btn--outline btn--sm mx-8" onclick="alert('Saved!')">Save</button>
         </div>
       </div>
     </div>`;
 }
+
 
 /* Renderers */
 function renderAllPositions(jobs){
@@ -322,51 +373,74 @@ function renderArchivePositions(jobs){
   el.innerHTML = jobs.length ? jobs.map(j => jobCardHTML(j, {expired:true})).join("") : `<p style="color:var(--text-muted)">Nothing in archive yet.</p>`;
 }
 
-/* Moderation: post job */
 function wirePostJobForm(){
-  const form = $("postJobForm"); if (!form) return;
+  const form = document.getElementById("postJobForm"); if (!form) return;
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!isAuthenticated) { showAlert("Please sign in to post a job."); showPage("signin"); return; }
 
     const role = (currentUser?.role || "CANDIDATE").toUpperCase();
-    const isPrivileged = role === "EMPLOYER" || role === "ADMIN";
+    const isPrivileged = ["EMPLOYER", "EMPLOYER_PENDING", "ADMIN"].includes(role);
+
+    const departments = getMultiSelectValues("postDepartments");
+    const levels = getMultiSelectValues("postLevels");
+    const deadlineISO = (document.getElementById("postDeadline")?.value || "").trim(); // yyyy-mm-dd
+
+    // Optional fields
+    const applyLink = (document.getElementById("postApplyLink")?.value || "").trim();
+    const institutionType = (document.getElementById("postInstitutionType")?.value || "").trim();
+    const imageDataUrl = (document.getElementById("postJobImage")?.dataset?.dataUrl) || null;
 
     const job = {
       title: safeGetValue("postTitle").trim(),
-      department: safeGetValue("postDepartment").trim(),
-      level: safeGetValue("postLevel"),
+      departments,                        // ARRAY
+      levels,                             // ARRAY
       description: safeGetValue("postDescription").trim(),
+      institutionType,                    // optional
       institution: safeGetValue("postInstitution").trim(),
       location: safeGetValue("postLocation").trim(),
+      applicationLink: applyLink || null, // optional
       salaryRange: safeGetValue("postSalary").trim(),
-      deadline: safeGetValue("postDeadline"),
+      deadline: deadlineISO,              // store ISO; we display dd/mm/yyyy
+      image: imageDataUrl || null,        // optional (base64 jpeg)
+
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       postedBy: currentUser.id,
       postedByName: currentUser.name || "",
       postedByInstitution: currentUser.institution || "",
       active: true,
       archived: false,
-      approved: isPrivileged,
+      approved: isPrivileged,             // EMPLOYER/ADMIN => live now
       approvedBy: isPrivileged ? currentUser.id : null,
       approvedAt: null
     };
 
-    if (!job.title || !job.department || !job.level || !job.description || !job.institution || !job.location || !job.deadline) {
-      showAlert("Please fill all required fields.");
-      return;
-    }
+    // Validation
+    if (!job.title) { showAlert("Please enter a Position Title."); return; }
+    if (!departments.length) { showAlert("Please select at least one Department."); return; }
+    if (!levels.length) { showAlert("Please select at least one Position Level."); return; }
+    if (!job.description) { showAlert("Please write the Description."); return; }
+    if (!job.institution) { showAlert("Please enter Institution Name."); return; }
+    if (!job.location) { showAlert("Please enter Location."); return; }
+    if (!deadlineISO) { showAlert("Please select Application Deadline."); return; }
 
     try {
       await db.collection("jobs").add(job);
       showAlert(isPrivileged ? "Job posted and visible to everyone." : "Job submitted. It will be visible after admin approval.");
+      // Reset form + preview
       form.reset();
+      const preview = document.getElementById("postJobImagePreview");
+      if (preview) { preview.src = ""; preview.classList.add("hidden"); }
+      const inputImg = document.getElementById("postJobImage");
+      if (inputImg) { delete inputImg.dataset.dataUrl; }
       showPage("jobs");
     } catch (err) {
       showAlert("Error posting job: " + (err?.message || err));
     }
   });
 }
+
 
 /* Realtime feed + Auto-archive */
 let jobsUnsub = null;
@@ -605,8 +679,10 @@ document.addEventListener("DOMContentLoaded", () => {
   wireAuthForms();
   wirePhotoUpload();
   wireProfileForm();
+   wirePostImage();
   wirePostJobForm();
   subscribeToJobs();
+   
 });
 
 /* ---------- Expose for HTML onclick ---------- */
