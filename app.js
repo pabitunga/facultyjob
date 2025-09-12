@@ -381,16 +381,18 @@ function wirePostJobForm(){
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+
     if (!isAuthenticated) {
-      showAlert("Please sign in as an Employer to post a job.");
+      showAlert("Please sign in to post a job.");
       showPage("signin");
       return;
     }
-    if (!(currentUser.role === "EMPLOYER" || currentUser.role === "ADMIN")) {
-      showAlert("Only Employers/Admins can post jobs.");
-      return;
-    }
 
+    // Decide approval based on role
+    const role = (currentUser?.role || "CANDIDATE").toUpperCase();
+    const isPrivileged = role === "EMPLOYER" || role === "ADMIN";
+
+    // Build the job object
     const job = {
       title: safeGetValue("postTitle").trim(),
       department: safeGetValue("postDepartment").trim(),
@@ -400,21 +402,33 @@ function wirePostJobForm(){
       location: safeGetValue("postLocation").trim(),
       salaryRange: safeGetValue("postSalary").trim(),
       deadline: safeGetValue("postDeadline"),
+
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       postedBy: currentUser.id,
       postedByName: currentUser.name || "",
       postedByInstitution: currentUser.institution || "",
-      active: true
+      active: true,
+
+      // ✅ moderation flags
+      approved: isPrivileged,                          // EMPLOYER/ADMIN => live now
+      approvedBy: isPrivileged ? currentUser.id : null,
+      approvedAt: null
     };
 
-    if (!job.title || !job.department || !job.level || !job.description || !job.institution || !job.location || !job.deadline) {
+    // Minimal validation
+    if (!job.title || !job.department || !job.level || !job.description ||
+        !job.institution || !job.location || !job.deadline) {
       showAlert("Please fill all required fields.");
       return;
     }
 
     try {
       await db.collection("jobs").add(job);
-      showAlert("Job posted! It’s now visible to everyone.");
+      showAlert(
+        isPrivileged
+          ? "Job posted and visible to everyone."
+          : "Job submitted. It will be visible after admin approval."
+      );
       form.reset();
       showPage("jobs");
     } catch (err) {
@@ -422,6 +436,35 @@ function wirePostJobForm(){
     }
   });
 }
+
+let jobsUnsub = null;
+
+function subscribeToJobs(){
+  if (!db) return;
+  try { if (jobsUnsub) jobsUnsub(); } catch {}
+
+  jobsUnsub = db.collection("jobs")
+    .orderBy("createdAt", "desc")
+    .onSnapshot((snap) => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const isAdmin = isAuthenticated && currentUser?.role === "ADMIN";
+
+      const visible = all.filter(j => {
+        if (j.active === false) return false;
+        if (j.approved === true) return true;                       // public
+        if (isAdmin) return true;                                   // admin sees all
+        if (isAuthenticated && j.postedBy === currentUser?.id) return true; // poster sees pending
+        return false;
+      });
+
+      renderAllPositions(visible);
+      renderFeaturedPositionsFromJobs(visible);
+    }, (err) => {
+      console.warn("Jobs listener error:", err);
+    });
+}
+
+
 
 /* Demo content */
 function renderFeaturedPositions() {
