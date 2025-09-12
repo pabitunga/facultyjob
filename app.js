@@ -224,44 +224,65 @@ function toggleUserDropdown() {
 }
 
 // Authentication Functions
-function signUp(formData) {
-  const userData = {
-    id: Date.now(),
-    name: formData.name,
-    email: formData.email,
-    role: formData.role,
-    institution: formData.institution || '',
-    photo: formData.photo || null,
-    createdAt: new Date().toISOString()
-  };
-  
-  currentUser = userData;
-  isAuthenticated = true;
-  saveSession();
-  updateNavigation();
-  
-  alert('Account created successfully! Welcome to FacultyJobs!');
-  showPage('dashboard');
+
+ async function signUp(formData) {
+  try {
+    const userCredential = await auth.createUserWithEmailAndPassword(formData.email, formData.password);
+    const user = userCredential.user;
+
+    // Save extra info in Firestore
+    await db.collection("users").doc(user.uid).set({
+      name: formData.name,
+      role: formData.role,
+      institution: formData.institution || '',
+      photo: formData.photo || null,
+      createdAt: new Date().toISOString()
+    });
+
+    currentUser = {
+      id: user.uid,
+      name: formData.name,
+      email: formData.email,
+      role: formData.role,
+      institution: formData.institution || '',
+      photo: formData.photo || null
+    };
+    isAuthenticated = true;
+    updateNavigation();
+    alert("Account created successfully!");
+    showPage("dashboard");
+  } catch (error) {
+    alert("Error: " + error.message);
+  }
 }
 
-function signIn(email, password) {
-  const userData = {
-    id: 1,
-    name: 'Dr. Jane Smith',
-    email: email,
-    role: email.includes('admin') ? 'ADMIN' : 'CANDIDATE',
-    institution: 'Stanford University',
-    photo: null
-  };
-  
-  currentUser = userData;
-  isAuthenticated = true;
-  saveSession();
-  updateNavigation();
-  
-  alert('Welcome back! You have successfully signed in.');
-  showPage('dashboard');
+
+async function signIn(email, password) {
+  try {
+    const userCredential = await auth.signInWithEmailAndPassword(email, password);
+    const user = userCredential.user;
+
+    // Get extra info from Firestore
+    const userDoc = await db.collection("users").doc(user.uid).get();
+    const userData = userDoc.data();
+
+    currentUser = {
+      id: user.uid,
+      name: userData.name,
+      email: user.email,
+      role: userData.role,
+      institution: userData.institution,
+      photo: userData.photo || null
+    };
+    isAuthenticated = true;
+    updateNavigation();
+    alert("Welcome back!");
+    showPage("dashboard");
+  } catch (error) {
+    alert("Error: " + error.message);
+  }
 }
+
 
 function signOut() {
   clearSession();
