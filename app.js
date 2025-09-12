@@ -1,10 +1,11 @@
 /* ===========================================
-   FacultyJobs – app.js (compat SDK)
-   - Email verification + Forgot password
-   - Realtime Jobs (with moderation)
-   - Home shows "Closing Soon" (near deadline, top 6)
-   - Archive page shows expired jobs (with "Expired")
-   - Auto-archive (ADMIN or poster) when deadline passes
+   FacultyJobs – app.js (Firebase COMPAT SDK)
+   - Candidate posts allowed (pending)
+   - Employer/Admin posts live immediately
+   - Backward-compat: infer approval if missing
+   - Non-blocking center toasts (no OK)
+   - Realtime lists: Closing Soon / All / Archive
+   - Multi-select Dept/Level + image upload
    =========================================== */
 
 "use strict";
@@ -32,11 +33,23 @@ const db   = window.firebase?.firestore ? window.firebase.firestore() : null;
 let currentUser = null;
 let isAuthenticated = false;
 
-/* Config: near-expiry window (days) */
+/* Config */
 const NEAR_EXPIRY_DAYS = 7;
 
+/* ---------------- Helpers ---------------- */
+function $(id) { return document.getElementById(id); }
+function qsa(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
+function safeGetValue(id) { const el = $(id); return el ? el.value : ""; }
+function ensureFirebase(service = "Firebase") {
+  const ok = !!(window.firebase && auth && db);
+  if (!ok) showToast(service + " isn’t ready. Check Firebase config & enable Email/Password.", "error", 3000);
+  return ok;
+}
+function escapeHtml(str){
+  return (str||'').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]);
+}
 
-// --- Toast helpers (non-blocking) ---
+/* --- Toasts (center, non-blocking) --- */
 function ensureToastContainer() {
   let c = document.getElementById("toastContainer");
   if (!c) {
@@ -47,50 +60,26 @@ function ensureToastContainer() {
   }
   return c;
 }
-
 function showToast(message, type = "info", duration = 2000) {
   const container = ensureToastContainer();
   const el = document.createElement("div");
   el.className = "toast " + (type === "success" ? "toast--success" : type === "error" ? "toast--error" : "toast--info");
   el.textContent = message;
-
   container.appendChild(el);
-
-  // auto-hide
   setTimeout(() => {
     el.classList.add("toast--hide");
     setTimeout(() => el.remove(), 300);
   }, duration);
 }
-
-// Make our old showAlert() use the toast system
-function showAlert(msg, type = "info") {
-  showToast(msg, type, 2000);
-}
-
-// OPTIONAL but handy: convert any old window.alert calls to toasts too
+function showAlert(msg, type = "info") { showToast(msg, type, 2000); }
 try { window.alert = (m) => showToast(String(m), "info", 2000); } catch {}
-// expose so inline onclick can use it
 window.showToast = showToast;
 
-
-/* ---------------- Helpers ---------------- */
-function $(id) { return document.getElementById(id); }
-function qsa(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
-function safeGetValue(id) { const el = $(id); return el ? el.value : ""; }
-function showAlert(msg) { window.alert(msg); }
-function ensureFirebase(service = "Firebase") {
-  const ok = !!(window.firebase && auth && db);
-  if (!ok) showAlert(service + " isn’t ready. Check Firebase config & enable Email/Password in Firebase Console.");
-  return ok;
-}
-
-/* Date helpers */
+/* --- Date helpers --- */
 function parseDeadline(dstr){
   if (!dstr) return null;
   const d = new Date(dstr);
   if (isNaN(d.getTime())) return null;
-  // consider deadline inclusive until end of the day
   d.setHours(23,59,59,999);
   return d;
 }
@@ -105,11 +94,14 @@ function daysLeft(job){
   const ms = d.getTime() - now().getTime();
   return Math.ceil(ms / (1000*60*60*24));
 }
-function escapeHtml(str){
-  return (str||'').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+function formatDateDisplay(iso){
+  if (!iso) return "";
+  const [y,m,d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
 }
 
-/* ---------------- Session ---------------- */
+/* --- Session --- */
 function saveSession() {
   try {
     localStorage.setItem("fj:isAuthenticated", JSON.stringify(isAuthenticated));
@@ -129,7 +121,7 @@ function clearSession() {
   } catch {}
 }
 
-/* ---------------- Navigation ---------------- */
+/* --- Navigation --- */
 function showPage(name) {
   qsa(".page").forEach(p => p.classList.add("hidden"));
   const map = {
@@ -143,7 +135,7 @@ function showPage(name) {
   const el = $(id);
   if (el) el.classList.remove("hidden");
   if (name === "dashboard" && !isAuthenticated) {
-    showAlert("Please sign in to access your dashboard.");
+    showToast("Please sign in to access your dashboard.", "info", 2500);
     showPage("signin");
   }
 }
@@ -170,7 +162,7 @@ function updateNavigation() {
   }
 }
 
-/* ---------------- User Dropdown ---------------- */
+/* --- User Dropdown --- */
 function toggleUserDropdown() {
   const dd = $("userDropdown");
   if (dd) dd.classList.toggle("hidden");
@@ -186,7 +178,7 @@ async function sendVerificationEmail(user) {
 }
 async function handleUnverifiedSignIn(user) {
   await sendVerificationEmail(user);
-  showAlert("We sent a verification link to: " + (user.email || "your email") + ". Please verify, then sign in again.");
+  showToast("We sent a verification link. Please verify, then sign in again.", "info", 3000);
   try { await auth.signOut(); } catch {}
   isAuthenticated = false; currentUser = null; clearSession(); updateNavigation(); showPage("signin");
 }
@@ -195,19 +187,26 @@ async function signUp(formData) {
   try {
     const cred = await auth.createUserWithEmailAndPassword(formData.email, formData.password);
     const user = cred.user;
+
+    // If they pick EMPLOYER, grant EMPLOYER immediately (as requested).
+    const selected = (formData.role || "CANDIDATE").toUpperCase();
+    const initialRole = selected === "EMPLOYER" ? "EMPLOYER" : "CANDIDATE";
+
     await db.collection("users").doc(user.uid).set({
       name: formData.name || "",
-      role: formData.role || "CANDIDATE",
+      role: initialRole,
       institution: formData.institution || "",
       photo: formData.photo || null,
+      email: user.email || null,
       createdAt: new Date().toISOString()
     });
+
     await sendVerificationEmail(user);
-    showAlert("Verification email sent to " + (user.email || "your email") + ". Please verify, then sign in.");
+    showToast("Verification email sent. Please verify, then sign in.", "success", 2500);
     try { await auth.signOut(); } catch {}
     isAuthenticated = false; currentUser = null; clearSession(); updateNavigation(); showPage("signin");
   } catch (err) {
-    showAlert("Sign up error: " + (err?.message || err));
+    showToast("Sign up error: " + (err?.message || err), "error", 3000);
   }
 }
 async function signIn(email, password) {
@@ -232,10 +231,10 @@ async function signIn(email, password) {
     isAuthenticated = true;
     saveSession();
     updateNavigation();
-    showAlert("Welcome back!");
+    showToast("Welcome back!", "success", 2000); // center toast (no OK)
     showPage("dashboard");
   } catch (err) {
-    showAlert("Sign in error: " + (err?.message || err));
+    showToast("Sign in error: " + (err?.message || err), "error", 3000);
   }
 }
 async function signOut() {
@@ -247,40 +246,8 @@ async function signOut() {
 }
 async function forgotPassword(email) {
   if (!ensureFirebase("Authentication")) return;
-  try { await auth.sendPasswordResetEmail(email); showAlert("Password reset email sent to " + email + "."); }
-  catch (err) { showAlert("Reset error: " + (err?.message || err)); }
-}
-// Multi-select helper
-function getMultiSelectValues(id){
-  const el = document.getElementById(id);
-  if (!el) return [];
-  return Array.from(el.options).filter(o => o.selected).map(o => o.value);
-}
-
-// Format YYYY-MM-DD to dd/mm/yyyy for display
-function formatDateDisplay(iso){
-  if (!iso) return "";
-  const [y,m,d] = iso.split("-");
-  if (!y || !m || !d) return iso;
-  return `${d}/${m}/${y}`;
-}
-
-// Basic image compress (resizes large images to ~1280px, quality 0.8)
-async function compressImageToDataURL(file, maxW = 1280, maxH = 1280, quality = 0.8){
-  if (!file) return null;
-  const bitmap = await createImageBitmap(file);
-  const w = bitmap.width, h = bitmap.height;
-  let targetW = w, targetH = h;
-  if (w > maxW || h > maxH) {
-    const ratio = Math.min(maxW / w, maxH / h);
-    targetW = Math.round(w * ratio);
-    targetH = Math.round(h * ratio);
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = targetW; canvas.height = targetH;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(bitmap, 0, 0, targetW, targetH);
-  return canvas.toDataURL("image/jpeg", quality);
+  try { await auth.sendPasswordResetEmail(email); showToast("Password reset email sent to " + email + ".", "success", 2500); }
+  catch (err) { showToast("Reset error: " + (err?.message || err), "error", 3000); }
 }
 
 /* ---------- Photo Upload & Profile ---------- */
@@ -320,14 +287,14 @@ function wireProfileForm() {
   const form = $("profileForm"); if (!form) return;
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!isAuthenticated || !currentUser) { showAlert("Please sign in."); return; }
+    if (!isAuthenticated || !currentUser) { showToast("Please sign in.", "info", 2000); return; }
     const name = safeGetValue("profileName");
     const institution = safeGetValue("profileInstitution");
     currentUser.name = name || currentUser.name;
     currentUser.institution = institution || currentUser.institution;
     saveSession(); updateNavigation();
     if (ensureFirebase("Firestore")) { try { await db.collection("users").doc(currentUser.id).update({ name: currentUser.name, institution: currentUser.institution }); } catch {} }
-    showAlert("Profile saved!");
+    showToast("Profile saved!", "success", 1800);
   });
 }
 function handlePostJob() {
@@ -336,19 +303,52 @@ function handlePostJob() {
     showPage("signin");
     return;
   }
-
   // Everyone signed in can open the page (Candidate posts become pending)
   showPage("post-job");
-
   const r = (currentUser?.role || "").toUpperCase();
   if (!["EMPLOYER", "EMPLOYER_PENDING", "ADMIN"].includes(r)) {
     showToast("Note: your job will go live after admin approval.", "info", 3000);
   }
 }
 
-
 /* ================== JOBS (Realtime + Moderation + Archive) ================== */
 
+/* Multi-select helper + image utilities */
+function getMultiSelectValues(id){
+  const el = document.getElementById(id);
+  if (!el) return [];
+  return Array.from(el.options).filter(o => o.selected).map(o => o.value);
+}
+async function compressImageToDataURL(file, maxW = 1280, maxH = 1280, quality = 0.8){
+  if (!file) return null;
+  const bitmap = await createImageBitmap(file);
+  const w = bitmap.width, h = bitmap.height;
+  let targetW = w, targetH = h;
+  if (w > maxW || h > maxH) {
+    const ratio = Math.min(maxW / w, maxH / h);
+    targetW = Math.round(w * ratio);
+    targetH = Math.round(h * ratio);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = targetW; canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+function wirePostImage(){
+  const input = $("postJobImage");
+  const preview = $("postJobImagePreview");
+  if (!input) return;
+  input.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const dataUrl = await compressImageToDataURL(file, 1280, 1280, 0.8);
+    if (preview) { preview.src = dataUrl; preview.classList.remove("hidden"); }
+    input.dataset.dataUrl = dataUrl || "";
+  });
+}
+
+/* Card UI (handles arrays or single strings; shows image & pretty date) */
 function jobCardHTML(j, opts = {}){
   const desc = (j.description || "");
   const short = desc.length > 180 ? desc.slice(0,180) + "…" : desc;
@@ -361,7 +361,6 @@ function jobCardHTML(j, opts = {}){
   const deptText  = depts.length ? depts.join(", ") : "—";
   const levelText = levels.length ? levels.join(", ") : "—";
 
-  // badges (near-expiry/expired already computed elsewhere)
   const expireDays = daysLeft(j);
   const expired = opts.expired || isExpired(j);
   const near = !expired && expireDays != null && expireDays >= 0 && expireDays <= NEAR_EXPIRY_DAYS;
@@ -383,7 +382,7 @@ function jobCardHTML(j, opts = {}){
 
   const applyBtn = j.applicationLink
     ? `<a class="btn btn--primary btn--sm" href="${escapeHtml(j.applicationLink)}" target="_blank" rel="noopener">Apply</a>`
-    : `<button class="btn btn--primary btn--sm" onclick="alert('Apply flow coming soon!')">Apply</button>`;
+    : `<button class="btn btn--primary btn--sm" onclick="showToast('Apply flow coming soon!', 'info', 1500)">Apply</button>`;
 
   return `
     <div class="card">
@@ -399,12 +398,11 @@ function jobCardHTML(j, opts = {}){
         <p style="margin-top:8px">${escapeHtml(short)}</p>
         <div class="mt-8">
           ${applyBtn}
-          <button class="btn btn--outline btn--sm mx-8" onclick="alert('Saved!')">Save</button>
+          <button class="btn btn--outline btn--sm mx-8" onclick="showToast('Saved!', 'success', 1200)">Save</button>
         </div>
       </div>
     </div>`;
 }
-
 
 /* Renderers */
 function renderAllPositions(jobs){
@@ -424,37 +422,37 @@ function renderArchivePositions(jobs){
   el.innerHTML = jobs.length ? jobs.map(j => jobCardHTML(j, {expired:true})).join("") : `<p style="color:var(--text-muted)">Nothing in archive yet.</p>`;
 }
 
+/* Post form (Candidate allowed; approved flag always set) */
 function wirePostJobForm(){
-  const form = document.getElementById("postJobForm"); if (!form) return;
+  const form = $("postJobForm"); if (!form) return;
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!isAuthenticated) { showAlert("Please sign in to post a job."); showPage("signin"); return; }
+    if (!isAuthenticated) { showToast("Please sign in to post a job.", "info", 2500); showPage("signin"); return; }
 
     const role = (currentUser?.role || "CANDIDATE").toUpperCase();
     const isPrivileged = ["EMPLOYER", "EMPLOYER_PENDING", "ADMIN"].includes(role);
 
     const departments = getMultiSelectValues("postDepartments");
     const levels = getMultiSelectValues("postLevels");
-    const deadlineISO = (document.getElementById("postDeadline")?.value || "").trim(); // yyyy-mm-dd
+    const deadlineISO = (document.getElementById("postDeadline")?.value || "").trim();
 
-    // Optional fields
     const applyLink = (document.getElementById("postApplyLink")?.value || "").trim();
     const institutionType = (document.getElementById("postInstitutionType")?.value || "").trim();
     const imageDataUrl = (document.getElementById("postJobImage")?.dataset?.dataUrl) || null;
 
     const job = {
       title: safeGetValue("postTitle").trim(),
-      departments,                        // ARRAY
-      levels,                             // ARRAY
+      departments: departments,                  // ARRAY
+      levels: levels,                            // ARRAY
       description: safeGetValue("postDescription").trim(),
-      institutionType,                    // optional
+      institutionType,
       institution: safeGetValue("postInstitution").trim(),
       location: safeGetValue("postLocation").trim(),
-      applicationLink: applyLink || null, // optional
+      applicationLink: applyLink || null,
       salaryRange: safeGetValue("postSalary").trim(),
-      deadline: deadlineISO,              // store ISO; we display dd/mm/yyyy
-      image: imageDataUrl || null,        // optional (base64 jpeg)
+      deadline: deadlineISO,
+      image: imageDataUrl || null,
 
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       postedBy: currentUser.id,
@@ -462,36 +460,53 @@ function wirePostJobForm(){
       postedByInstitution: currentUser.institution || "",
       active: true,
       archived: false,
-      approved: isPrivileged,             // EMPLOYER/ADMIN => live now
+      approved: isPrivileged,                   // <-- ALWAYS set
       approvedBy: isPrivileged ? currentUser.id : null,
       approvedAt: null
     };
 
     // Validation
-    if (!job.title) { showAlert("Please enter a Position Title."); return; }
-    if (!departments.length) { showAlert("Please select at least one Department."); return; }
-    if (!levels.length) { showAlert("Please select at least one Position Level."); return; }
-    if (!job.description) { showAlert("Please write the Description."); return; }
-    if (!job.institution) { showAlert("Please enter Institution Name."); return; }
-    if (!job.location) { showAlert("Please enter Location."); return; }
-    if (!deadlineISO) { showAlert("Please select Application Deadline."); return; }
+    if (!job.title) { showToast("Please enter a Position Title.", "error", 1800); return; }
+    if (!departments.length) { showToast("Select at least one Department.", "error", 1800); return; }
+    if (!levels.length) { showToast("Select at least one Position Level.", "error", 1800); return; }
+    if (!job.description) { showToast("Please write the Description.", "error", 1800); return; }
+    if (!job.institution) { showToast("Please enter Institution Name.", "error", 1800); return; }
+    if (!job.location) { showToast("Please enter Location.", "error", 1800); return; }
+    if (!deadlineISO) { showToast("Please select Application Deadline.", "error", 1800); return; }
 
     try {
       await db.collection("jobs").add(job);
-      showAlert(isPrivileged ? "Job posted and visible to everyone." : "Job submitted. It will be visible after admin approval.");
-      // Reset form + preview
+      showToast(isPrivileged ? "Job posted and visible to everyone." : "Job submitted; visible after admin approval.", "success", 2500);
       form.reset();
-      const preview = document.getElementById("postJobImagePreview");
-      if (preview) { preview.src = ""; preview.classList.add("hidden"); }
-      const inputImg = document.getElementById("postJobImage");
-      if (inputImg) { delete inputImg.dataset.dataUrl; }
+      const preview = $("postJobImagePreview"); if (preview) { preview.src = ""; preview.classList.add("hidden"); }
+      const inputImg = $("postJobImage"); if (inputImg) { delete inputImg.dataset.dataUrl; }
       showPage("jobs");
     } catch (err) {
-      showAlert("Error posting job: " + (err?.message || err));
+      showToast("Error posting job: " + (err?.message || err), "error", 3000);
     }
   });
 }
 
+/* ----- Infer poster roles for jobs missing 'approved' (backward-compat) ----- */
+const _roleCache = new Map(); // uid -> role
+async function fetchPosterRolesFor(jobs){
+  if (!db) return {};
+  const pending = [];
+  const need = new Set();
+  jobs.forEach(j => { if (j.postedBy && !_roleCache.has(j.postedBy)) need.add(j.postedBy); });
+  for (const uid of need) {
+    pending.push(
+      db.collection("users").doc(uid).get().then(doc => {
+        const role = doc.exists ? (doc.data()?.role || "CANDIDATE") : "CANDIDATE";
+        _roleCache.set(uid, role);
+      }).catch(()=>{})
+    );
+  }
+  await Promise.all(pending);
+  const out = {};
+  jobs.forEach(j => { if (j.postedBy) out[j.id] = _roleCache.get(j.postedBy) || "CANDIDATE"; });
+  return out;
+}
 
 /* Realtime feed + Auto-archive */
 let jobsUnsub = null;
@@ -502,7 +517,7 @@ async function maybeAutoArchiveExpired(all){
   let changes = 0;
 
   all.forEach(doc => {
-    const j = doc; // {id, ...data}
+    const j = doc;
     if (!j) return;
     if (isExpired(j) && (j.archived !== true || j.active !== false)) {
       if (canTouch(j)) {
@@ -531,15 +546,27 @@ function subscribeToJobs(){
     .onSnapshot(async (snap) => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+      // Backward-compat: fetch poster roles so we can infer approval where it's missing
+      const posterRoleMap = await fetchPosterRolesFor(all);
+
       // Auto-archive expired (ADMIN or poster)
       await maybeAutoArchiveExpired(all);
 
+      // Helper: compute effective approval
+      const isEffectivelyApproved = (j) => {
+        if (j.approved === true) return true;
+        if (j.approved === false) return false;
+        // Missing 'approved' -> infer from poster role (EMPLOYER/ADMIN => approved)
+        const r = posterRoleMap[j.postedBy] || "CANDIDATE";
+        return r === "EMPLOYER" || r === "ADMIN";
+      };
+
       // Public-approved active (for Home "Closing Soon")
       const publicApprovedActive = all.filter(j =>
-        j.approved === true && j.active !== false && j.archived !== true && !isExpired(j)
+        isEffectivelyApproved(j) && j.active !== false && j.archived !== true && !isExpired(j)
       );
 
-      // Near-expiry list (0..NEAR_EXPIRY_DAYS days left)
+      // Near-expiry list
       const near = publicApprovedActive
         .map(j => ({ j, left: daysLeft(j) }))
         .filter(x => x.left != null && x.left >= 0 && x.left <= NEAR_EXPIRY_DAYS)
@@ -549,15 +576,12 @@ function subscribeToJobs(){
       renderNearExpiryPositions(near);
 
       // Visible list for Jobs page:
-      // - Admin sees everything not archived and not expired (including pending)
-      // - Poster sees their own pending
-      // - Public sees approved active non-expired
       const isAdmin = isAuthenticated && currentUser?.role === "ADMIN";
       const visible = all.filter(j => {
         if (j.archived === true) return false;
         if (isExpired(j)) return false;
-        if (isAdmin) return true;
-        if (j.approved === true && j.active !== false) return true;
+        if (isAdmin) return true;                                  // admin sees all
+        if (isEffectivelyApproved(j) && j.active !== false) return true;   // public
         if (isAuthenticated && j.postedBy === currentUser?.id) return true; // poster sees pending
         return false;
       });
@@ -570,7 +594,7 @@ function subscribeToJobs(){
     }, (err) => { console.warn("Jobs listener error:", err); });
 }
 
-/* ----- Admin Pending (optional UI if you added it to Admin page) ----- */
+/* ----- Admin Pending (if you show it on Admin page) ----- */
 let pendingUnsub = null;
 function pendingJobCardHTML(j){
   const short = (j.description || "").slice(0,140) + ((j.description||"").length>140 ? "…" : "");
@@ -580,7 +604,8 @@ function pendingJobCardHTML(j){
         <h3>${escapeHtml(j.title)}</h3>
         <p>${escapeHtml(j.institution)} • ${escapeHtml(j.location)}</p>
         <div style="color:var(--text-muted);margin:6px 0;">
-          ${escapeHtml(j.department)} • ${escapeHtml(j.level)}
+          ${escapeHtml((Array.isArray(j.departments)?j.departments.join(", "):j.department||"—"))}
+          • ${escapeHtml((Array.isArray(j.levels)?j.levels.join(", "):j.level||"—"))}
         </div>
         <div class="text-sm" style="color:var(--text-muted);margin-top:6px;">Deadline: ${escapeHtml(j.deadline || "—")}</div>
         <p>${escapeHtml(short)}</p>
@@ -609,23 +634,21 @@ function subscribePendingJobs(){
     }, (err) => console.warn("Pending listener error:", err));
 }
 async function approveJob(id){
-  if (!(isAuthenticated && currentUser?.role === "ADMIN")) { showAlert("Only admins can approve."); return; }
+  if (!(isAuthenticated && currentUser?.role === "ADMIN")) { showToast("Only admins can approve.", "error", 1800); return; }
   try {
     await db.collection("jobs").doc(id).update({
       approved: true,
       approvedBy: currentUser.id,
       approvedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-  } catch (e) { showAlert("Approve failed: " + (e?.message || e)); }
+  } catch (e) { showToast("Approve failed: " + (e?.message || e), "error", 2800); }
 }
 async function rejectJob(id){
-  if (!(isAuthenticated && currentUser?.role === "ADMIN")) { showAlert("Only admins can reject."); return; }
+  if (!(isAuthenticated && currentUser?.role === "ADMIN")) { showToast("Only admins can reject.", "error", 1800); return; }
   try {
     await db.collection("jobs").doc(id).update({ active: false, approved: false });
-  } catch (e) { showAlert("Reject failed: " + (e?.message || e)); }
+  } catch (e) { showToast("Reject failed: " + (e?.message || e), "error", 2800); }
 }
-
-/* ---------- Demo benefits removed; only dynamic lists used ---------- */
 
 /* ---------- Profile hydrate ---------- */
 function hydrateProfileForm() {
@@ -654,7 +677,7 @@ function wireAuthForms() {
       let photo = null;
       const preview = $("photoPreview");
       if (preview && preview.src && !preview.classList.contains("hidden")) photo = preview.src;
-      if (!email || !password) { showAlert("Please enter email and password."); return; }
+      if (!email || !password) { showToast("Please enter email and password.", "error", 1800); return; }
       signUp({ name, email, password, role, institution, photo });
     });
   }
@@ -664,10 +687,10 @@ function wireAuthForms() {
       e.preventDefault();
       const email = safeGetValue("signinEmail");
       const password = safeGetValue("signinPassword");
-      if (!email || !password) { showAlert("Please enter email and password."); return; }
+      if (!email || !password) { showToast("Please enter email and password.", "error", 1800); return; }
       signIn(email, password);
     });
-    // Forgot password button (created by JS)
+    // Forgot password button (JS-added)
     const card = document.querySelector("#signinPage .auth-card");
     if (card && !document.getElementById("forgotPasswordBtn")) {
       const btn = document.createElement("button");
@@ -711,7 +734,6 @@ document.addEventListener("DOMContentLoaded", () => {
         loadSession();
       }
 
-      // Admin pending feed hook
       if (isAuthenticated && currentUser?.role === "ADMIN") {
         subscribePendingJobs();
       } else if (pendingUnsub) {
@@ -730,10 +752,9 @@ document.addEventListener("DOMContentLoaded", () => {
   wireAuthForms();
   wirePhotoUpload();
   wireProfileForm();
-   wirePostImage();
+  wirePostImage();
   wirePostJobForm();
   subscribeToJobs();
-   
 });
 
 /* ---------- Expose for HTML onclick ---------- */
