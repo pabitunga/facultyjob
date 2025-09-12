@@ -562,3 +562,40 @@ a:focus, button:focus, .btn:focus, .nav__link:focus, .dropdown-item:focus, .form
 /* Ensure dropdown & header stacking */
 .header { z-index: 20; }
 .user-dropdown { z-index: 30; }
+/* ====== Two-column form layout ====== */
+.two-col-form .form-grid.two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.two-col-form .form-group.col-span-2 {
+  grid-column: 1 / -1;
+}
+@media (max-width: 768px) {
+  .two-col-form .form-grid.two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Helper text under inputs */
+.helper-text {
+  font-size: 12px;
+  color: var(--text-muted, #666);
+  margin-top: 6px;
+}
+
+/* Make multi-selects comfortable */
+select[multiple] {
+  height: 180px;
+  padding: 8px;
+}
+
+/* Job card image */
+.job-image {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
