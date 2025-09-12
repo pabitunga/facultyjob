@@ -6,7 +6,7 @@
   <title>FacultyJobs - Find Your Perfect Academic Position</title>
   <link rel="stylesheet" href="style.css"/>
 
-  <!-- Firebase SDKs (compat builds for namespaced API) -->
+  <!-- Firebase COMPAT SDKs (namespaced API: firebase.auth(), firebase.firestore()) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -22,16 +22,19 @@
         <a href="javascript:void(0)" onclick="showPage('home')" class="nav__link">Home</a>
         <a href="javascript:void(0)" onclick="showPage('jobs')" class="nav__link">Find Jobs</a>
         <a href="javascript:void(0)" onclick="showPage('about')" class="nav__link">About</a>
+
         <!-- Anonymous user buttons -->
         <div id="anonymousNav" class="nav__auth">
           <button class="btn btn--outline btn--sm" onclick="showPage('signin')">Sign In</button>
           <button class="btn btn--primary btn--sm" onclick="showPage('signup')">Join Now</button>
         </div>
+
         <!-- Authenticated user menu -->
         <div id="authenticatedNav" class="nav__user hidden">
           <a href="javascript:void(0)" onclick="showPage('dashboard')" class="nav__link">Dashboard</a>
-          <a href="javascript:void(0)" onclick="showPage('post-job')" class="nav__link nav__post-job">Post Job</a>
+          <!-- (Removed the header "Post Job" link as requested) -->
           <a href="javascript:void(0)" onclick="showPage('admin')" class="nav__link nav__admin hidden">Admin</a>
+
           <div class="user-menu">
             <img
               id="userPhoto"
@@ -66,35 +69,32 @@
           </p>
           <div class="hero__actions">
             <button class="btn btn--primary btn--lg" onclick="showPage('jobs')">Explore Positions</button>
+            <!-- Keep this button; handlePostJob() gates by role in app.js -->
             <button class="btn btn--outline btn--lg" onclick="handlePostJob()">Post a Job</button>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Featured Positions Section -->
+    <!-- Featured Positions (filled by app.js; realtime) -->
     <section class="featured-positions">
       <div class="container">
         <div class="section__header">
           <h2 class="section__title">Featured Positions</h2>
           <p class="section__subtitle">Premium opportunities from top institutions worldwide</p>
         </div>
-        <div class="positions-grid" id="featuredPositions">
-          <!-- Featured positions will be populated by JavaScript -->
-        </div>
+        <div class="positions-grid" id="featuredPositions"></div>
       </div>
     </section>
 
-    <!-- Why Choose FacultyJobs Section -->
+    <!-- Why Choose -->
     <section class="why-choose">
       <div class="container">
         <div class="section__header">
           <h2 class="section__title">Why Choose FacultyJobs?</h2>
           <p class="section__subtitle">The leading platform for academic career advancement</p>
         </div>
-        <div class="benefits-grid" id="benefitsGrid">
-          <!-- Benefits will be populated by JavaScript -->
-        </div>
+        <div class="benefits-grid" id="benefitsGrid"></div>
       </div>
     </section>
   </div>
@@ -111,7 +111,7 @@
         <div class="search-filters">
           <div class="search-bar">
             <input type="text" placeholder="Search positions, keywords, or institutions..." class="form-control" />
-            <button class="btn btn--primary" onclick="alert('Search functionality activated!')">Search</button>
+            <button class="btn btn--primary" onclick="alert('Search functionality coming soon')">Search</button>
           </div>
           <div class="filters">
             <select class="form-control">
@@ -123,9 +123,10 @@
             </select>
             <select class="form-control">
               <option value="">All Levels</option>
-              <option value="assistant">Assistant Professor</option>
-              <option value="associate">Associate Professor</option>
-              <option value="full">Full Professor</option>
+              <option value="Assistant Professor">Assistant Professor</option>
+              <option value="Associate Professor">Associate Professor</option>
+              <option value="Full Professor">Full Professor</option>
+              <option value="Lecturer">Lecturer</option>
             </select>
             <select class="form-control">
               <option value="">All Locations</option>
@@ -139,11 +140,9 @@
         <div class="jobs-results">
           <div class="results-header">
             <h3>All Positions</h3>
-            <span class="results-count">Showing all available positions</span>
+            <span class="results-count">Live jobs from universities</span>
           </div>
-          <div class="positions-grid" id="allPositions">
-            <!-- All positions will be populated by JavaScript -->
-          </div>
+          <div class="positions-grid" id="allPositions"></div>
         </div>
       </div>
     </section>
@@ -232,10 +231,6 @@
 
             <button type="submit" class="btn btn--primary btn--full-width">Sign In</button>
           </form>
-
-          <div class="auth-footer">
-            <p>Don't have an account? <a href="javascript:void(0)" onclick="showPage('signup')">Join now</a></p>
-          </div>
         </div>
       </div>
     </section>
@@ -264,21 +259,21 @@
             <h3>Applications</h3>
             <div class="stat-number">3</div>
             <p>Active Applications</p>
-            <button class="btn btn--secondary" onclick="alert('View Applications feature coming soon!')">View Applications</button>
+            <button class="btn btn--secondary" onclick="alert('View Applications coming soon')">View Applications</button>
           </div>
 
           <div class="dashboard-card">
             <h3>Saved Jobs</h3>
             <div class="stat-number">8</div>
             <p>Positions Saved</p>
-            <button class="btn btn--secondary" onclick="alert('View Saved Jobs feature coming soon!')">View Saved</button>
+            <button class="btn btn--secondary" onclick="alert('View Saved coming soon')">View Saved</button>
           </div>
 
           <div class="dashboard-card">
             <h3>Job Alerts</h3>
             <div class="stat-number">5</div>
             <p>Active Alerts</p>
-            <button class="btn btn--secondary" onclick="alert('Manage Job Alerts feature coming soon!')">Manage Alerts</button>
+            <button class="btn btn--secondary" onclick="alert('Manage Alerts coming soon')">Manage Alerts</button>
           </div>
         </div>
 
@@ -320,32 +315,27 @@
             <div class="form-group">
               <label class="form-label">Position Title</label>
               <input type="text" id="postTitle" class="form-control" required>
-              //<input type="text" class="form-control" required />
             </div>
 
             <div class="form-group">
               <label class="form-label">Department</label>
               <input type="text" id="postDepartment" class="form-control" required>
-              // <input type="text" class="form-control" required />
             </div>
 
             <div class="form-group">
               <label class="form-label">Position Level</label>
               <select id="postLevel" class="form-control" required>
-              // <select class="form-control" required>
                 <option value="">Select Level</option>
-                <option value="assistant">Assistant Professor</option>
-                <option value="associate">Associate Professor</option>
-                <option value="full">Full Professor</option>
-                <option value="lecturer">Lecturer</option>
+                <option value="Assistant Professor">Assistant Professor</option>
+                <option value="Associate Professor">Associate Professor</option>
+                <option value="Full Professor">Full Professor</option>
+                <option value="Lecturer">Lecturer</option>
               </select>
             </div>
 
             <div class="form-group">
               <label class="form-label">Description</label>
               <textarea id="postDescription" class="form-control" rows="6" required></textarea>
-
-            // <textarea class="form-control" rows="6" required></textarea>
             </div>
           </div>
 
@@ -354,13 +344,11 @@
             <div class="form-group">
               <label class="form-label">Institution Name</label>
               <input type="text" id="postInstitution" class="form-control" required>
-
             </div>
 
             <div class="form-group">
               <label class="form-label">Location</label>
-             <input type="text" id="postLocation" class="form-control" required>
-
+              <input type="text" id="postLocation" class="form-control" required>
             </div>
           </div>
 
@@ -368,14 +356,12 @@
             <h2>Application Details</h2>
             <div class="form-group">
               <label class="form-label">Salary Range</label>
-             <input type="text" id="postSalary" placeholder="e.g., $80,000 - $120,000" class="form-control" />
-
+              <input type="text" id="postSalary" placeholder="e.g., $80,000 - $120,000" class="form-control">
             </div>
 
             <div class="form-group">
               <label class="form-label">Application Deadline</label>
-             <input type="date" id="postDeadline" class="form-control" required />
-
+              <input type="date" id="postDeadline" class="form-control" required>
             </div>
           </div>
 
@@ -399,29 +385,36 @@
             <h3>Users</h3>
             <div class="stat-number">1,247</div>
             <p>Total Users</p>
-            <button class="btn btn--secondary" onclick="alert('User management features coming soon!')">Manage Users</button>
+            <button class="btn btn--secondary" onclick="alert('User management coming soon')">Manage Users</button>
           </div>
 
           <div class="admin-card">
             <h3>Positions</h3>
             <div class="stat-number">89</div>
             <p>Active Positions</p>
-            <button class="btn btn--secondary" onclick="alert('Position management features coming soon!')">Manage Positions</button>
+            <button class="btn btn--secondary" onclick="alert('Position management coming soon')">Manage Positions</button>
           </div>
 
           <div class="admin-card">
             <h3>Applications</h3>
             <div class="stat-number">342</div>
             <p>Total Applications</p>
-            <button class="btn btn--secondary" onclick="alert('Application management features coming soon!')">View Applications</button>
+            <button class="btn btn--secondary" onclick="alert('Application management coming soon')">View Applications</button>
           </div>
 
           <div class="admin-card">
             <h3>Reports</h3>
             <div class="stat-number">12</div>
             <p>Generated Today</p>
-            <button class="btn btn--secondary" onclick="alert('Reports feature coming soon!')">View Reports</button>
+            <button class="btn btn--secondary" onclick="alert('Reports coming soon')">View Reports</button>
           </div>
+        </div>
+
+        <!-- Pending Jobs moderation (filled by app.js for ADMIN) -->
+        <div class="form-section" style="margin-top:16px;">
+          <h2>Pending Jobs</h2>
+          <p class="section__subtitle">Approve or reject jobs submitted by users.</p>
+          <div id="pendingJobsList" class="positions-grid"></div>
         </div>
       </div>
     </section>
@@ -554,7 +547,7 @@
     </div>
   </footer>
 
-  <!-- App script should come last -->
+  <!-- App JS (must be last) -->
   <script src="app.js"></script>
 </body>
 </html>
