@@ -1,57 +1,69 @@
 /* ===========================================
    FacultyJobs – app.js (Firebase COMPAT SDK)
-   - Candidate posts allowed (pending)
+   - Uses your NEW firebaseConfig
+   - Pages always clickable (no hard errors)
+   - Candidate can post (pending)
    - Employer/Admin posts live immediately
-   - Backward-compat: infer approval if missing
-   - Non-blocking center toasts (no OK)
-   - Realtime lists: Closing Soon / All / Archive
-   - Multi-select Dept/Level + image upload
+   - Center toasts (no blocking OK dialog)
+   - Closing Soon / All / Archive lists
+   - Multi-select Dept/Level + optional image
    =========================================== */
 
 "use strict";
 
 /* -------- Firebase Init (compat) -------- */
 (function initFirebase() {
-  if (window.firebase && window.firebase.apps && window.firebase.apps.length) return;
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyCBQfwpbnDdPPl0LdeXPWAc_o-Nd67EnsY",
-  authDomain: "jobs-ff5a9.firebaseapp.com",
-  projectId: "jobs-ff5a9",
-  storageBucket: "jobs-ff5a9.firebasestorage.app",
-  messagingSenderId: "110232650978",
-  appId: "1:110232650978:web:64c20408089e75487f8abb",
-  measurementId: "G-WW68CSEMM6"
-};
-  try { window.firebase.initializeApp(firebaseConfig); }
-  catch(e){ console.warn("[Firebase] init error:", e); }
+  // Your NEW config
+  const firebaseConfig = {
+    apiKey: "AIzaSyCBQfwpbnDdPPl0LdeXPWAc_o-Nd67EnsY",
+    authDomain: "jobs-ff5a9.firebaseapp.com",
+    projectId: "jobs-ff5a9",
+    storageBucket: "jobs-ff5a9.firebasestorage.app",
+    messagingSenderId: "110232650978",
+    appId: "1:110232650978:web:64c20408089e75487f8abb",
+    measurementId: "G-WW68CSEMM6"
+  };
+
+  try {
+    if (window.firebase && window.firebase.initializeApp) {
+      if (!window.firebase.apps || !window.firebase.apps.length) {
+        window.firebase.initializeApp(firebaseConfig);
+      }
+    } else {
+      console.error("[Firebase] SDK not loaded. Check index.html <script> tags.");
+    }
+  } catch (e) {
+    console.error("[Firebase] init error:", e);
+  }
 })();
-const auth = window.firebase?.auth ? window.firebase.auth() : null;
-const db   = window.firebase?.firestore ? window.firebase.firestore() : null;
+
+// Safe handles even if Firebase not ready
+var auth = (window.firebase && window.firebase.auth) ? window.firebase.auth() : null;
+var db   = (window.firebase && window.firebase.firestore) ? window.firebase.firestore() : null;
 
 /* ---------------- Global State ---------------- */
-let currentUser = null;
-let isAuthenticated = false;
+var currentUser = null;
+var isAuthenticated = false;
 
 /* Config */
-const NEAR_EXPIRY_DAYS = 7;
+var NEAR_EXPIRY_DAYS = 7;
 
 /* ---------------- Helpers ---------------- */
 function $(id) { return document.getElementById(id); }
-function qsa(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
-function safeGetValue(id) { const el = $(id); return el ? el.value : ""; }
-function ensureFirebase(service = "Firebase") {
-  const ok = !!(window.firebase && auth && db);
-  if (!ok) showToast(service + " isn’t ready. Check Firebase config & enable Email/Password.", "error", 3000);
+function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+function safeGetValue(id) { var el = $(id); return el ? el.value : ""; }
+function ensureFirebase(service) {
+  var ok = !!(window.firebase && auth && db);
+  if (!ok) showToast((service || "Firebase") + " isn’t ready. Check SDK & config.", "error", 3000);
   return ok;
 }
 function escapeHtml(str){
-  return (str||'').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]);
+  return (str || "").replace(/[&<>"']/g, function(s){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]); });
 }
 
 /* --- Toasts (center, non-blocking) --- */
 function ensureToastContainer() {
-  let c = document.getElementById("toastContainer");
+  var c = $("toastContainer");
   if (!c) {
     c = document.createElement("div");
     c.id = "toastContainer";
@@ -60,45 +72,46 @@ function ensureToastContainer() {
   }
   return c;
 }
-function showToast(message, type = "info", duration = 2000) {
-  const container = ensureToastContainer();
-  const el = document.createElement("div");
+function showToast(message, type, duration) {
+  if (duration == null) duration = 2000;
+  var container = ensureToastContainer();
+  var el = document.createElement("div");
   el.className = "toast " + (type === "success" ? "toast--success" : type === "error" ? "toast--error" : "toast--info");
   el.textContent = message;
   container.appendChild(el);
-  setTimeout(() => {
+  setTimeout(function(){
     el.classList.add("toast--hide");
-    setTimeout(() => el.remove(), 300);
+    setTimeout(function(){ if (el && el.parentNode) el.parentNode.removeChild(el); }, 300);
   }, duration);
 }
-function showAlert(msg, type = "info") { showToast(msg, type, 2000); }
-try { window.alert = (m) => showToast(String(m), "info", 2000); } catch {}
-window.showToast = showToast;
+function showAlert(msg, type){ showToast(msg, type || "info", 2000); }
+// Convert any stray alert() to our toast
+try { window.alert = function(m){ showToast(String(m), "info", 2000); }; } catch(e){}
 
 /* --- Date helpers --- */
 function parseDeadline(dstr){
   if (!dstr) return null;
-  const d = new Date(dstr);
+  var d = new Date(dstr);
   if (isNaN(d.getTime())) return null;
   d.setHours(23,59,59,999);
   return d;
 }
 function now(){ return new Date(); }
 function isExpired(job){
-  const d = parseDeadline(job?.deadline);
+  var d = parseDeadline(job && job.deadline);
   return !!(d && d.getTime() < now().getTime());
 }
 function daysLeft(job){
-  const d = parseDeadline(job?.deadline);
+  var d = parseDeadline(job && job.deadline);
   if (!d) return null;
-  const ms = d.getTime() - now().getTime();
+  var ms = d.getTime() - now().getTime();
   return Math.ceil(ms / (1000*60*60*24));
 }
 function formatDateDisplay(iso){
   if (!iso) return "";
-  const [y,m,d] = iso.split("-");
-  if (!y || !m || !d) return iso;
-  return `${d}/${m}/${y}`;
+  var parts = iso.split("-");
+  if (parts.length !== 3) return iso;
+  return parts[2] + "/" + parts[1] + "/" + parts[0];
 }
 
 /* --- Session --- */
@@ -106,33 +119,33 @@ function saveSession() {
   try {
     localStorage.setItem("fj:isAuthenticated", JSON.stringify(isAuthenticated));
     localStorage.setItem("fj:currentUser", JSON.stringify(currentUser));
-  } catch {}
+  } catch(e){}
 }
 function loadSession() {
   try {
     isAuthenticated = JSON.parse(localStorage.getItem("fj:isAuthenticated")) || false;
     currentUser = JSON.parse(localStorage.getItem("fj:currentUser")) || null;
-  } catch { isAuthenticated = false; currentUser = null; }
+  } catch(e){ isAuthenticated = false; currentUser = null; }
 }
 function clearSession() {
   try {
     localStorage.removeItem("fj:isAuthenticated");
     localStorage.removeItem("fj:currentUser");
-  } catch {}
+  } catch(e){}
 }
 
 /* --- Navigation --- */
 function showPage(name) {
-  qsa(".page").forEach(p => p.classList.add("hidden"));
-  const map = {
+  qsa(".page").forEach(function(p){ p.classList.add("hidden"); });
+  var map = {
     home: "homePage", jobs: "jobsPage", about: "aboutPage",
     archive: "archivePage",
     signup: "signupPage", signin: "signinPage",
     dashboard: "dashboardPage", "post-job": "postJobPage",
     admin: "adminPage", profile: "profilePage"
   };
-  const id = map[name] || "homePage";
-  const el = $(id);
+  var id = map[name] || "homePage";
+  var el = $(id);
   if (el) el.classList.remove("hidden");
   if (name === "dashboard" && !isAuthenticated) {
     showToast("Please sign in to access your dashboard.", "info", 2500);
@@ -140,143 +153,143 @@ function showPage(name) {
   }
 }
 function updateNavigation() {
-  const anon = $("anonymousNav");
-  const authd = $("authenticatedNav");
+  var anon = $("anonymousNav");
+  var authd = $("authenticatedNav");
   if (isAuthenticated && currentUser) {
-    anon && anon.classList.add("hidden");
-    authd && authd.classList.remove("hidden");
-    const userName = $("userName");
-    const userRole = $("userRole");
-    const userPhoto = $("userPhoto");
+    if (anon) anon.classList.add("hidden");
+    if (authd) authd.classList.remove("hidden");
+    var userName = $("userName");
+    var userRole = $("userRole");
+    var userPhoto = $("userPhoto");
     if (userName) userName.textContent = currentUser.name || "User";
     if (userRole) userRole.textContent = currentUser.role || "Candidate";
     if (userPhoto && currentUser.photo) userPhoto.src = currentUser.photo;
-    const adminLink = qsa(".nav__admin")[0];
+    var adminLink = qsa(".nav__admin")[0];
     if (adminLink) {
-      (currentUser.role === "ADMIN") ? adminLink.classList.remove("hidden")
-                                     : adminLink.classList.add("hidden");
+      if (currentUser.role === "ADMIN") adminLink.classList.remove("hidden");
+      else adminLink.classList.add("hidden");
     }
   } else {
-    authd && authd.classList.add("hidden");
-    anon && anon.classList.remove("hidden");
+    if (authd) authd.classList.add("hidden");
+    if (anon) anon.classList.remove("hidden");
   }
 }
 
 /* --- User Dropdown --- */
 function toggleUserDropdown() {
-  const dd = $("userDropdown");
+  var dd = $("userDropdown");
   if (dd) dd.classList.toggle("hidden");
 }
-document.addEventListener("click", (e) => {
-  const dd = $("userDropdown"), trigger = $("userPhoto");
+document.addEventListener("click", function(e){
+  var dd = $("userDropdown"), trigger = $("userPhoto");
   if (dd && trigger && !dd.contains(e.target) && !trigger.contains(e.target)) dd.classList.add("hidden");
 });
 
 /* ================== AUTH ================== */
-async function sendVerificationEmail(user) {
-  try { await user.sendEmailVerification(); } catch (err) { console.warn("sendEmailVerification error:", err); }
+function sendVerificationEmail(user) {
+  if (!user || !user.sendEmailVerification) return Promise.resolve();
+  return user.sendEmailVerification().catch(function(err){ console.warn("sendEmailVerification error:", err); });
 }
-async function handleUnverifiedSignIn(user) {
-  await sendVerificationEmail(user);
-  showToast("We sent a verification link. Please verify, then sign in again.", "info", 3000);
-  try { await auth.signOut(); } catch {}
-  isAuthenticated = false; currentUser = null; clearSession(); updateNavigation(); showPage("signin");
-}
-async function signUp(formData) {
-  if (!ensureFirebase("Authentication")) return;
-  try {
-    const cred = await auth.createUserWithEmailAndPassword(formData.email, formData.password);
-    const user = cred.user;
-
-    // If they pick EMPLOYER, grant EMPLOYER immediately (as requested).
-    const selected = (formData.role || "CANDIDATE").toUpperCase();
-    const initialRole = selected === "EMPLOYER" ? "EMPLOYER" : "CANDIDATE";
-
-    await db.collection("users").doc(user.uid).set({
-      name: formData.name || "",
-      role: initialRole,
-      institution: formData.institution || "",
-      photo: formData.photo || null,
-      email: user.email || null,
-      createdAt: new Date().toISOString()
-    });
-
-    await sendVerificationEmail(user);
-    showToast("Verification email sent. Please verify, then sign in.", "success", 2500);
-    try { await auth.signOut(); } catch {}
+function handleUnverifiedSignIn(user) {
+  return sendVerificationEmail(user).then(function(){
+    showToast("We sent a verification link. Please verify, then sign in again.", "info", 3000);
+    if (auth && auth.signOut) return auth.signOut();
+  }).finally(function(){
     isAuthenticated = false; currentUser = null; clearSession(); updateNavigation(); showPage("signin");
-  } catch (err) {
-    showToast("Sign up error: " + (err?.message || err), "error", 3000);
-  }
+  });
 }
-async function signIn(email, password) {
+function signUp(formData) {
   if (!ensureFirebase("Authentication")) return;
-  try {
-    const cred = await auth.signInWithEmailAndPassword(email, password);
-    const user = cred.user;
-    if (!user.emailVerified) { await handleUnverifiedSignIn(user); return; }
-    let userData = {};
-    try {
-      const doc = await db.collection("users").doc(user.uid).get();
-      userData = doc.exists ? doc.data() : {};
-    } catch {}
-    currentUser = {
-      id: user.uid,
-      name: userData.name || "User",
-      email: user.email,
-      role: userData.role || "CANDIDATE",
-      institution: userData.institution || "",
-      photo: userData.photo || null
-    };
-    isAuthenticated = true;
-    saveSession();
-    updateNavigation();
-    showToast("Welcome back!", "success", 2000); // center toast (no OK)
-    showPage("dashboard");
-  } catch (err) {
-    showToast("Sign in error: " + (err?.message || err), "error", 3000);
-  }
+  auth.createUserWithEmailAndPassword(formData.email, formData.password)
+    .then(function(cred){
+      var user = cred.user;
+      var selected = (formData.role || "CANDIDATE").toUpperCase();
+      var initialRole = selected === "EMPLOYER" ? "EMPLOYER" : "CANDIDATE";
+      return db.collection("users").doc(user.uid).set({
+        name: formData.name || "",
+        role: initialRole,
+        institution: formData.institution || "",
+        photo: formData.photo || null,
+        email: user.email || null,
+        createdAt: new Date().toISOString()
+      }).then(function(){ return sendVerificationEmail(user); });
+    })
+    .then(function(){
+      showToast("Verification email sent. Please verify, then sign in.", "success", 2500);
+      if (auth && auth.signOut) return auth.signOut();
+    })
+    .catch(function(err){
+      showToast("Sign up error: " + (err && err.message ? err.message : err), "error", 3000);
+    })
+    .finally(function(){
+      isAuthenticated = false; currentUser = null; clearSession(); updateNavigation(); showPage("signin");
+    });
 }
-async function signOut() {
-  if (!ensureFirebase("Authentication")) {
-    isAuthenticated = false; currentUser = null; clearSession(); updateNavigation(); showPage("home"); return;
-  }
-  try { await auth.signOut(); } catch {}
+function signIn(email, password) {
+  if (!ensureFirebase("Authentication")) return;
+  auth.signInWithEmailAndPassword(email, password)
+    .then(function(cred){
+      var user = cred.user;
+      if (!user.emailVerified) return handleUnverifiedSignIn(user);
+      return db.collection("users").doc(user.uid).get().then(function(doc){
+        var userData = doc.exists ? (doc.data() || {}) : {};
+        currentUser = {
+          id: user.uid,
+          name: userData.name || "User",
+          email: user.email,
+          role: userData.role || "CANDIDATE",
+          institution: userData.institution || "",
+          photo: userData.photo || null
+        };
+        isAuthenticated = true;
+        saveSession();
+        updateNavigation();
+        showToast("Welcome back!", "success", 2000); // center toast
+        showPage("dashboard");
+      });
+    })
+    .catch(function(err){
+      showToast("Sign in error: " + (err && err.message ? err.message : err), "error", 3000);
+    });
+}
+function signOut() {
+  if (auth && auth.signOut) auth.signOut().catch(function(){});
   isAuthenticated = false; currentUser = null; clearSession(); updateNavigation(); showPage("home");
 }
-async function forgotPassword(email) {
+function forgotPassword(email) {
   if (!ensureFirebase("Authentication")) return;
-  try { await auth.sendPasswordResetEmail(email); showToast("Password reset email sent to " + email + ".", "success", 2500); }
-  catch (err) { showToast("Reset error: " + (err?.message || err), "error", 3000); }
+  auth.sendPasswordResetEmail(email)
+    .then(function(){ showToast("Password reset email sent to " + email + ".", "success", 2500); })
+    .catch(function(err){ showToast("Reset error: " + (err && err.message ? err.message : err), "error", 3000); });
 }
 
 /* ---------- Photo Upload & Profile ---------- */
 function wirePhotoUpload() {
-  const upload = $("photoUpload");
-  const previewImg = $("photoPreview");
-  const ph = $("photoPlaceholder");
+  var upload = $("photoUpload");
+  var previewImg = $("photoPreview");
+  var ph = $("photoPlaceholder");
   if (upload) {
-    upload.addEventListener("change", (e) => {
-      const file = e.target.files?.[0]; if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
+    upload.addEventListener("change", function(e){
+      var file = e.target.files && e.target.files[0]; if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(){
         if (previewImg) { previewImg.src = reader.result; previewImg.classList.remove("hidden"); }
-        ph && ph.classList.add("hidden");
+        if (ph) ph.classList.add("hidden");
       };
       reader.readAsDataURL(file);
     });
   }
-  const profileUpload = $("profilePhotoUpload");
-  const currentPhoto = $("currentPhoto");
+  var profileUpload = $("profilePhotoUpload");
+  var currentPhoto = $("currentPhoto");
   if (profileUpload) {
-    profileUpload.addEventListener("change", (e) => {
-      const file = e.target.files?.[0]; if (!file) return;
-      const reader = new FileReader();
-      reader.onload = async () => {
+    profileUpload.addEventListener("change", function(e){
+      var file = e.target.files && e.target.files[0]; if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(){
         if (currentPhoto) currentPhoto.src = reader.result;
         if (isAuthenticated && currentUser) {
           currentUser.photo = reader.result; saveSession(); updateNavigation();
-          if (ensureFirebase("Firestore")) { try { await db.collection("users").doc(currentUser.id).update({ photo: reader.result }); } catch {} }
+          if (db) { db.collection("users").doc(currentUser.id).update({ photo: reader.result }).catch(function(){}); }
         }
       };
       reader.readAsDataURL(file);
@@ -284,16 +297,16 @@ function wirePhotoUpload() {
   }
 }
 function wireProfileForm() {
-  const form = $("profileForm"); if (!form) return;
-  form.addEventListener("submit", async (e) => {
+  var form = $("profileForm"); if (!form) return;
+  form.addEventListener("submit", function(e){
     e.preventDefault();
     if (!isAuthenticated || !currentUser) { showToast("Please sign in.", "info", 2000); return; }
-    const name = safeGetValue("profileName");
-    const institution = safeGetValue("profileInstitution");
+    var name = safeGetValue("profileName");
+    var institution = safeGetValue("profileInstitution");
     currentUser.name = name || currentUser.name;
     currentUser.institution = institution || currentUser.institution;
     saveSession(); updateNavigation();
-    if (ensureFirebase("Firestore")) { try { await db.collection("users").doc(currentUser.id).update({ name: currentUser.name, institution: currentUser.institution }); } catch {} }
+    if (db) db.collection("users").doc(currentUser.id).update({ name: currentUser.name, institution: currentUser.institution }).catch(function(){});
     showToast("Profile saved!", "success", 1800);
   });
 }
@@ -303,150 +316,172 @@ function handlePostJob() {
     showPage("signin");
     return;
   }
-  // Everyone signed in can open the page (Candidate posts become pending)
-  showPage("post-job");
-  const r = (currentUser?.role || "").toUpperCase();
-  if (!["EMPLOYER", "EMPLOYER_PENDING", "ADMIN"].includes(r)) {
+  showPage("post-job"); // Candidates allowed (their posts become pending)
+  var r = (currentUser && currentUser.role ? currentUser.role : "").toUpperCase();
+  if (["EMPLOYER", "EMPLOYER_PENDING", "ADMIN"].indexOf(r) === -1) {
     showToast("Note: your job will go live after admin approval.", "info", 3000);
   }
 }
 
 /* ================== JOBS (Realtime + Moderation + Archive) ================== */
 
-/* Multi-select helper + image utilities */
+// Multi-select helper
 function getMultiSelectValues(id){
-  const el = document.getElementById(id);
+  var el = $(id);
   if (!el) return [];
-  return Array.from(el.options).filter(o => o.selected).map(o => o.value);
-}
-async function compressImageToDataURL(file, maxW = 1280, maxH = 1280, quality = 0.8){
-  if (!file) return null;
-  const bitmap = await createImageBitmap(file);
-  const w = bitmap.width, h = bitmap.height;
-  let targetW = w, targetH = h;
-  if (w > maxW || h > maxH) {
-    const ratio = Math.min(maxW / w, maxH / h);
-    targetW = Math.round(w * ratio);
-    targetH = Math.round(h * ratio);
+  var out = [];
+  for (var i=0; i<el.options.length; i++){
+    if (el.options[i].selected) out.push(el.options[i].value);
   }
-  const canvas = document.createElement("canvas");
-  canvas.width = targetW; canvas.height = targetH;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(bitmap, 0, 0, targetW, targetH);
-  return canvas.toDataURL("image/jpeg", quality);
+  return out;
+}
+
+// (Optional) client resize for preview only
+function compressImageToDataURL(file, maxW, maxH, quality){
+  return new Promise(function(resolve){
+    if (!file) return resolve(null);
+    var reader = new FileReader();
+    reader.onload = function(){
+      var img = new Image();
+      img.onload = function(){
+        var w = img.width, h = img.height;
+        maxW = maxW || 1280; maxH = maxH || 1280; quality = quality || 0.8;
+        var targetW = w, targetH = h;
+        if (w > maxW || h > maxH) {
+          var ratio = Math.min(maxW / w, maxH / h);
+          targetW = Math.round(w * ratio);
+          targetH = Math.round(h * ratio);
+        }
+        var canvas = document.createElement("canvas");
+        canvas.width = targetW; canvas.height = targetH;
+        var ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        try { resolve(canvas.toDataURL("image/jpeg", quality)); }
+        catch(e){ resolve(reader.result); }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 function wirePostImage(){
-  const input = $("postJobImage");
-  const preview = $("postJobImagePreview");
+  var input = $("postJobImage");
+  var preview = $("postJobImagePreview");
   if (!input) return;
-  input.addEventListener("change", async (e) => {
-    const file = e.target.files?.[0];
+  input.addEventListener("change", function(e){
+    var file = e.target.files && e.target.files[0];
     if (!file) return;
-    const dataUrl = await compressImageToDataURL(file, 1280, 1280, 0.8);
-    if (preview) { preview.src = dataUrl; preview.classList.remove("hidden"); }
-    input.dataset.dataUrl = dataUrl || "";
+    compressImageToDataURL(file, 1280, 1280, 0.8).then(function(dataUrl){
+      if (preview) { preview.src = dataUrl; preview.classList.remove("hidden"); }
+      input.dataset.dataUrl = dataUrl || "";
+    });
   });
 }
 
-/* Card UI (handles arrays or single strings; shows image & pretty date) */
-function jobCardHTML(j, opts = {}){
-  const desc = (j.description || "");
-  const short = desc.length > 180 ? desc.slice(0,180) + "…" : desc;
+/* Card UI */
+function jobCardHTML(j, opts){
+  opts = opts || {};
+  var desc = (j.description || "");
+  var short = desc.length > 180 ? desc.slice(0,180) + "…" : desc;
 
-  const depts = Array.isArray(j.departments) ? j.departments
-                : (j.department ? [j.department] : []);
-  const levels = Array.isArray(j.levels) ? j.levels
-                : (j.level ? [j.level] : []);
+  var depts = Array.isArray(j.departments) ? j.departments
+            : (j.department ? [j.department] : []);
+  var levels = Array.isArray(j.levels) ? j.levels
+            : (j.level ? [j.level] : []);
 
-  const deptText  = depts.length ? depts.join(", ") : "—";
-  const levelText = levels.length ? levels.join(", ") : "—";
+  var deptText  = depts.length ? depts.join(", ") : "—";
+  var levelText = levels.length ? levels.join(", ") : "—";
 
-  const expireDays = daysLeft(j);
-  const expired = opts.expired || isExpired(j);
-  const near = !expired && expireDays != null && expireDays >= 0 && expireDays <= NEAR_EXPIRY_DAYS;
+  var expireDays = daysLeft(j);
+  var expired = opts.expired || isExpired(j);
+  var near = !expired && expireDays != null && expireDays >= 0 && expireDays <= NEAR_EXPIRY_DAYS;
 
-  let badge = "";
+  var badge = "";
   if (expired) {
-    badge = `<span class="status" style="background:#fee2e2;color:#991b1b">Expired</span>`;
+    badge = '<span class="status" style="background:#fee2e2;color:#991b1b">Expired</span>';
   } else if (near) {
-    const text = expireDays === 0 ? "Deadline: Today" : `Deadline: ${expireDays} day${expireDays===1?"":"s"} left`;
-    badge = `<span class="status">${escapeHtml(text)}</span>`;
+    var text = (expireDays === 0) ? "Deadline: Today" : ("Deadline: " + expireDays + " day" + (expireDays===1?"":"s") + " left");
+    badge = '<span class="status">' + escapeHtml(text) + '</span>';
   }
 
-  const deadlineText = j.deadline ? formatDateDisplay(j.deadline) : null;
-  const deadlineLine = deadlineText
-    ? `<div class="text-sm" style="color:var(--text-muted);margin-top:6px;">Deadline: ${escapeHtml(deadlineText)}</div>`
+  var deadlineText = j.deadline ? formatDateDisplay(j.deadline) : null;
+  var deadlineLine = deadlineText
+    ? '<div class="text-sm" style="color:var(--text-muted);margin-top:6px;">Deadline: ' + escapeHtml(deadlineText) + '</div>'
     : "";
 
-  const img = j.image ? `<img src="${j.image}" alt="Job image" class="job-image">` : "";
+  var img = j.image ? '<img src="' + j.image + '" alt="Job image" class="job-image">' : "";
 
-  const applyBtn = j.applicationLink
-    ? `<a class="btn btn--primary btn--sm" href="${escapeHtml(j.applicationLink)}" target="_blank" rel="noopener">Apply</a>`
-    : `<button class="btn btn--primary btn--sm" onclick="showToast('Apply flow coming soon!', 'info', 1500)">Apply</button>`;
+  var applyBtn = j.applicationLink
+    ? '<a class="btn btn--primary btn--sm" href="' + escapeHtml(j.applicationLink) + '" target="_blank" rel="noopener">Apply</a>'
+    : '<button class="btn btn--primary btn--sm" onclick="showToast(\'Apply flow coming soon!\', \'info\', 1500)">Apply</button>';
 
-  return `
-    <div class="card">
-      <div class="card__body">
-        ${img}
-        <h3>${escapeHtml(j.title)}</h3>
-        <p>${escapeHtml(j.institution)} • ${escapeHtml(j.location)}</p>
-        <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
-          ${escapeHtml(deptText)} • ${escapeHtml(levelText)}
-        </div>
-        ${deadlineLine}
-        <div style="margin-top:8px">${badge}</div>
-        <p style="margin-top:8px">${escapeHtml(short)}</p>
-        <div class="mt-8">
-          ${applyBtn}
-          <button class="btn btn--outline btn--sm mx-8" onclick="showToast('Saved!', 'success', 1200)">Save</button>
-        </div>
-      </div>
-    </div>`;
+  return (
+    '<div class="card">' +
+      '<div class="card__body">' +
+        img +
+        '<h3>' + escapeHtml(j.title) + '</h3>' +
+        '<p>' + escapeHtml(j.institution) + ' • ' + escapeHtml(j.location) + '</p>' +
+        '<div class="text-sm" style="color:var(--text-muted); margin-top:4px;">' +
+          escapeHtml(deptText) + ' • ' + escapeHtml(levelText) +
+        '</div>' +
+        deadlineLine +
+        '<div style="margin-top:8px">' + badge + '</div>' +
+        '<p style="margin-top:8px">' + escapeHtml(short) + '</p>' +
+        '<div class="mt-8">' +
+          applyBtn +
+          '<button class="btn btn--outline btn--sm mx-8" onclick="showToast(\'Saved!\', \'success\', 1200)">Save</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
 }
 
 /* Renderers */
 function renderAllPositions(jobs){
-  const el = $("allPositions");
+  var el = $("allPositions");
   if (!el) return;
-  el.innerHTML = jobs.length ? jobs.map(j => jobCardHTML(j)).join("") : `<p style="color:var(--text-muted)">No jobs posted yet.</p>`;
+  el.innerHTML = jobs.length ? jobs.map(function(j){ return jobCardHTML(j); }).join("")
+                             : '<p style="color:var(--text-muted)">No jobs posted yet.</p>';
 }
 function renderNearExpiryPositions(jobs){
-  const el = $("nearExpiryPositions");
+  var el = $("nearExpiryPositions");
   if (!el) return;
-  const top6 = jobs.slice(0,6);
-  el.innerHTML = top6.length ? top6.map(j => jobCardHTML(j, {near:true})).join("") : `<p style="color:var(--text-muted)">No closing-soon jobs.</p>`;
+  var top6 = jobs.slice(0,6);
+  el.innerHTML = top6.length ? top6.map(function(j){ return jobCardHTML(j, {near:true}); }).join("")
+                             : '<p style="color:var(--text-muted)">No closing-soon jobs.</p>';
 }
 function renderArchivePositions(jobs){
-  const el = $("archivePositions");
+  var el = $("archivePositions");
   if (!el) return;
-  el.innerHTML = jobs.length ? jobs.map(j => jobCardHTML(j, {expired:true})).join("") : `<p style="color:var(--text-muted)">Nothing in archive yet.</p>`;
+  el.innerHTML = jobs.length ? jobs.map(function(j){ return jobCardHTML(j, {expired:true}); }).join("")
+                             : '<p style="color:var(--text-muted)">Nothing in archive yet.</p>';
 }
 
-/* Post form (Candidate allowed; approved flag always set) */
+/* Post form */
 function wirePostJobForm(){
-  const form = $("postJobForm"); if (!form) return;
+  var form = $("postJobForm"); if (!form) return;
 
-  form.addEventListener("submit", async (e) => {
+  form.addEventListener("submit", function(e){
     e.preventDefault();
     if (!isAuthenticated) { showToast("Please sign in to post a job.", "info", 2500); showPage("signin"); return; }
 
-    const role = (currentUser?.role || "CANDIDATE").toUpperCase();
-    const isPrivileged = ["EMPLOYER", "EMPLOYER_PENDING", "ADMIN"].includes(role);
+    var role = (currentUser && currentUser.role ? currentUser.role : "CANDIDATE").toUpperCase();
+    var isPrivileged = ["EMPLOYER", "EMPLOYER_PENDING", "ADMIN"].indexOf(role) !== -1;
 
-    const departments = getMultiSelectValues("postDepartments");
-    const levels = getMultiSelectValues("postLevels");
-    const deadlineISO = (document.getElementById("postDeadline")?.value || "").trim();
+    var departments = getMultiSelectValues("postDepartments");
+    var levels = getMultiSelectValues("postLevels");
+    var deadlineISO = ( $("postDeadline") && $("postDeadline").value || "" ).trim();
 
-    const applyLink = (document.getElementById("postApplyLink")?.value || "").trim();
-    const institutionType = (document.getElementById("postInstitutionType")?.value || "").trim();
-    const imageDataUrl = (document.getElementById("postJobImage")?.dataset?.dataUrl) || null;
+    var applyLink = ( $("postApplyLink") && $("postApplyLink").value || "" ).trim();
+    var institutionType = ( $("postInstitutionType") && $("postInstitutionType").value || "" ).trim();
+    var imageDataUrl = ( $("postJobImage") && $("postJobImage").dataset && $("postJobImage").dataset.dataUrl ) || null;
 
-    const job = {
+    var job = {
       title: safeGetValue("postTitle").trim(),
-      departments: departments,                  // ARRAY
-      levels: levels,                            // ARRAY
+      departments: departments,
+      levels: levels,
       description: safeGetValue("postDescription").trim(),
-      institutionType,
+      institutionType: institutionType,
       institution: safeGetValue("postInstitution").trim(),
       location: safeGetValue("postLocation").trim(),
       applicationLink: applyLink || null,
@@ -454,14 +489,15 @@ function wirePostJobForm(){
       deadline: deadlineISO,
       image: imageDataUrl || null,
 
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      postedBy: currentUser.id,
-      postedByName: currentUser.name || "",
-      postedByInstitution: currentUser.institution || "",
+      createdAt: (window.firebase && window.firebase.firestore)
+                 ? window.firebase.firestore.FieldValue.serverTimestamp() : null,
+      postedBy: currentUser ? currentUser.id : null,
+      postedByName: currentUser ? (currentUser.name || "") : "",
+      postedByInstitution: currentUser ? (currentUser.institution || "") : "",
       active: true,
       archived: false,
-      approved: isPrivileged,                   // <-- ALWAYS set
-      approvedBy: isPrivileged ? currentUser.id : null,
+      approved: isPrivileged,               // Employer/Admin live immediately
+      approvedBy: isPrivileged && currentUser ? currentUser.id : null,
       approvedAt: null
     };
 
@@ -473,190 +509,175 @@ function wirePostJobForm(){
     if (!job.institution) { showToast("Please enter Institution Name.", "error", 1800); return; }
     if (!job.location) { showToast("Please enter Location.", "error", 1800); return; }
     if (!deadlineISO) { showToast("Please select Application Deadline.", "error", 1800); return; }
+    if (!ensureFirebase("Firestore")) return;
 
-    try {
-      await db.collection("jobs").add(job);
+    db.collection("jobs").add(job).then(function(){
       showToast(isPrivileged ? "Job posted and visible to everyone." : "Job submitted; visible after admin approval.", "success", 2500);
       form.reset();
-      const preview = $("postJobImagePreview"); if (preview) { preview.src = ""; preview.classList.add("hidden"); }
-      const inputImg = $("postJobImage"); if (inputImg) { delete inputImg.dataset.dataUrl; }
+      var preview = $("postJobImagePreview"); if (preview) { preview.src = ""; preview.classList.add("hidden"); }
+      var inputImg = $("postJobImage"); if (inputImg && inputImg.dataset) delete inputImg.dataset.dataUrl;
       showPage("jobs");
-    } catch (err) {
-      showToast("Error posting job: " + (err?.message || err), "error", 3000);
-    }
+    }).catch(function(err){
+      showToast("Error posting job: " + (err && err.message ? err.message : err), "error", 3000);
+    });
   });
 }
 
-/* ----- Infer poster roles for jobs missing 'approved' (backward-compat) ----- */
-const _roleCache = new Map(); // uid -> role
-async function fetchPosterRolesFor(jobs){
-  if (!db) return {};
-  const pending = [];
-  const need = new Set();
-  jobs.forEach(j => { if (j.postedBy && !_roleCache.has(j.postedBy)) need.add(j.postedBy); });
-  for (const uid of need) {
-    pending.push(
-      db.collection("users").doc(uid).get().then(doc => {
-        const role = doc.exists ? (doc.data()?.role || "CANDIDATE") : "CANDIDATE";
-        _roleCache.set(uid, role);
-      }).catch(()=>{})
-    );
-  }
-  await Promise.all(pending);
-  const out = {};
-  jobs.forEach(j => { if (j.postedBy) out[j.id] = _roleCache.get(j.postedBy) || "CANDIDATE"; });
-  return out;
+/* ----- Infer poster roles for legacy docs (missing 'approved') ----- */
+var _roleCache = {}; // uid -> role
+function fetchPosterRolesFor(jobs){
+  return new Promise(function(resolve){
+    if (!db) return resolve({});
+    var need = {};
+    jobs.forEach(function(j){ if (j.postedBy && !_roleCache[j.postedBy]) need[j.postedBy] = true; });
+    var keys = Object.keys(need);
+    if (!keys.length) return resolve({});
+    var pending = 0;
+    keys.forEach(function(uid){
+      pending++;
+      db.collection("users").doc(uid).get().then(function(doc){
+        _roleCache[uid] = doc.exists ? ((doc.data() && doc.data().role) || "CANDIDATE") : "CANDIDATE";
+      }).catch(function(){ _roleCache[uid] = "CANDIDATE"; }).finally(function(){
+        pending--; if (!pending) resolve({});
+      });
+    });
+    if (!keys.length) resolve({});
+  });
 }
 
 /* Realtime feed + Auto-archive */
-let jobsUnsub = null;
-async function maybeAutoArchiveExpired(all){
-  if (!db || !isAuthenticated) return;
-  const canTouch = (j) => (currentUser?.role === "ADMIN") || (currentUser?.id && j.postedBy === currentUser.id);
-  const batch = db.batch();
-  let changes = 0;
+var jobsUnsub = null;
+function maybeAutoArchiveExpired(all){
+  if (!db || !isAuthenticated) return Promise.resolve();
+  var canTouch = function(j){ return (currentUser && currentUser.role === "ADMIN") || (currentUser && j.postedBy === currentUser.id); };
+  var batch = db.batch();
+  var changes = 0;
 
-  all.forEach(doc => {
-    const j = doc;
-    if (!j) return;
+  all.forEach(function(j){
     if (isExpired(j) && (j.archived !== true || j.active !== false)) {
       if (canTouch(j)) {
-        const ref = db.collection("jobs").doc(j.id);
+        var ref = db.collection("jobs").doc(j.id);
         batch.update(ref, {
           archived: true,
           active: false,
-          expiredAt: firebase.firestore.FieldValue.serverTimestamp()
+          expiredAt: (window.firebase && window.firebase.firestore) ? window.firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString()
         });
         changes++;
       }
     }
   });
 
-  if (changes > 0) {
-    try { await batch.commit(); } catch (e) { console.warn("Auto-archive failed:", e); }
-  }
+  if (!changes) return Promise.resolve();
+  return batch.commit().catch(function(e){ console.warn("Auto-archive failed:", e); });
 }
-
 function subscribeToJobs(){
   if (!db) return;
-  try { if (jobsUnsub) jobsUnsub(); } catch {}
+  try { if (jobsUnsub) jobsUnsub(); } catch(e){}
 
-  jobsUnsub = db.collection("jobs")
-    .orderBy("createdAt", "desc")
-    .onSnapshot(async (snap) => {
-      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  jobsUnsub = db.collection("jobs").orderBy("createdAt", "desc").onSnapshot(function(snap){
+    var all = snap.docs.map(function(d){ var data = d.data(); data.id = d.id; return data; });
 
-      // Backward-compat: fetch poster roles so we can infer approval where it's missing
-      const posterRoleMap = await fetchPosterRolesFor(all);
-
-      // Auto-archive expired (ADMIN or poster)
-      await maybeAutoArchiveExpired(all);
-
-      // Helper: compute effective approval
-      const isEffectivelyApproved = (j) => {
+    fetchPosterRolesFor(all).then(function(){
+      // compute effective approval (legacy docs support)
+      function isEffectivelyApproved(j){
         if (j.approved === true) return true;
         if (j.approved === false) return false;
-        // Missing 'approved' -> infer from poster role (EMPLOYER/ADMIN => approved)
-        const r = posterRoleMap[j.postedBy] || "CANDIDATE";
-        return r === "EMPLOYER" || r === "ADMIN";
-      };
+        var r = _roleCache[j.postedBy] || "CANDIDATE";
+        return (r === "EMPLOYER" || r === "ADMIN");
+      }
 
-      // Public-approved active (for Home "Closing Soon")
-      const publicApprovedActive = all.filter(j =>
-        isEffectivelyApproved(j) && j.active !== false && j.archived !== true && !isExpired(j)
-      );
+      // Auto-archive (best-effort; don't block UI)
+      maybeAutoArchiveExpired(all);
 
-      // Near-expiry list
-      const near = publicApprovedActive
-        .map(j => ({ j, left: daysLeft(j) }))
-        .filter(x => x.left != null && x.left >= 0 && x.left <= NEAR_EXPIRY_DAYS)
-        .sort((a,b) => a.left - b.left)
-        .map(x => x.j);
-
+      // Home "Closing Soon"
+      var publicApprovedActive = all.filter(function(j){
+        return isEffectivelyApproved(j) && j.active !== false && j.archived !== true && !isExpired(j);
+      });
+      var near = publicApprovedActive
+        .map(function(j){ return { j: j, left: daysLeft(j) }; })
+        .filter(function(x){ return x.left != null && x.left >= 0 && x.left <= NEAR_EXPIRY_DAYS; })
+        .sort(function(a,b){ return a.left - b.left; })
+        .map(function(x){ return x.j; });
       renderNearExpiryPositions(near);
 
-      // Visible list for Jobs page:
-      const isAdmin = isAuthenticated && currentUser?.role === "ADMIN";
-      const visible = all.filter(j => {
+      // Jobs page visibility
+      var isAdmin = isAuthenticated && currentUser && currentUser.role === "ADMIN";
+      var visible = all.filter(function(j){
         if (j.archived === true) return false;
         if (isExpired(j)) return false;
-        if (isAdmin) return true;                                  // admin sees all
-        if (isEffectivelyApproved(j) && j.active !== false) return true;   // public
-        if (isAuthenticated && j.postedBy === currentUser?.id) return true; // poster sees pending
+        if (isAdmin) return true;
+        if (isEffectivelyApproved(j) && j.active !== false) return true;
+        if (isAuthenticated && currentUser && j.postedBy === currentUser.id) return true;
         return false;
       });
       renderAllPositions(visible);
 
-      // Archive page: everything expired OR explicitly archived
-      const archivedList = all.filter(j => j.archived === true || isExpired(j));
+      // Archive
+      var archivedList = all.filter(function(j){ return j.archived === true || isExpired(j); });
       renderArchivePositions(archivedList);
-
-    }, (err) => { console.warn("Jobs listener error:", err); });
+    });
+  }, function(err){
+    console.warn("Jobs listener error:", err);
+  });
 }
 
-/* ----- Admin Pending (if you show it on Admin page) ----- */
-let pendingUnsub = null;
+/* ----- Admin Pending (only if you show it) ----- */
+var pendingUnsub = null;
 function pendingJobCardHTML(j){
-  const short = (j.description || "").slice(0,140) + ((j.description||"").length>140 ? "…" : "");
-  return `
-    <div class="card">
-      <div class="card__body">
-        <h3>${escapeHtml(j.title)}</h3>
-        <p>${escapeHtml(j.institution)} • ${escapeHtml(j.location)}</p>
-        <div style="color:var(--text-muted);margin:6px 0;">
-          ${escapeHtml((Array.isArray(j.departments)?j.departments.join(", "):j.department||"—"))}
-          • ${escapeHtml((Array.isArray(j.levels)?j.levels.join(", "):j.level||"—"))}
-        </div>
-        <div class="text-sm" style="color:var(--text-muted);margin-top:6px;">Deadline: ${escapeHtml(j.deadline || "—")}</div>
-        <p>${escapeHtml(short)}</p>
-        <div class="mt-8">
-          <button class="btn btn--primary btn--sm" onclick="approveJob('${j.id}')">Approve</button>
-          <button class="btn btn--outline btn--sm mx-8" onclick="rejectJob('${j.id}')">Reject</button>
-        </div>
-      </div>
-    </div>`;
+  var short = (j.description || "");
+  if (short.length > 140) short = short.slice(0,140) + "…";
+  return (
+    '<div class="card"><div class="card__body">' +
+      '<h3>' + escapeHtml(j.title) + '</h3>' +
+      '<p>' + escapeHtml(j.institution) + ' • ' + escapeHtml(j.location) + '</p>' +
+      '<div style="color:var(--text-muted);margin:6px 0;">' +
+        escapeHtml(Array.isArray(j.departments)?j.departments.join(", "):(j.department||"—")) + ' • ' +
+        escapeHtml(Array.isArray(j.levels)?j.levels.join(", "):(j.level||"—")) +
+      '</div>' +
+      '<div class="text-sm" style="color:var(--text-muted);margin-top:6px;">Deadline: ' + escapeHtml(j.deadline || "—") + '</div>' +
+      '<p>' + escapeHtml(short) + '</p>' +
+      '<div class="mt-8">' +
+        '<button class="btn btn--primary btn--sm" onclick="approveJob(\'' + j.id + '\')">Approve</button>' +
+        '<button class="btn btn--outline btn--sm mx-8" onclick="rejectJob(\'' + j.id + '\')">Reject</button>' +
+      '</div>' +
+    '</div></div>'
+  );
 }
 function renderPendingJobs(jobs){
-  const host = $("pendingJobsList"); if (!host) return;
-  host.innerHTML = jobs.length
-    ? jobs.map(pendingJobCardHTML).join("")
-    : `<p style="color:var(--text-muted)">No jobs waiting for approval.</p>`;
+  var host = $("pendingJobsList"); if (!host) return;
+  host.innerHTML = jobs.length ? jobs.map(pendingJobCardHTML).join("")
+                               : '<p style="color:var(--text-muted)">No jobs waiting for approval.</p>';
 }
 function subscribePendingJobs(){
   if (!db) return;
-  try { if (pendingUnsub) pendingUnsub(); } catch {}
-  pendingUnsub = db.collection("jobs")
-    .orderBy("createdAt", "desc")
-    .onSnapshot((snap) => {
-      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const pending = all.filter(j => j.active !== false && j.approved !== true);
-      renderPendingJobs(pending);
-    }, (err) => console.warn("Pending listener error:", err));
+  try { if (pendingUnsub) pendingUnsub(); } catch(e){}
+  pendingUnsub = db.collection("jobs").orderBy("createdAt", "desc").onSnapshot(function(snap){
+    var all = snap.docs.map(function(d){ var data = d.data(); data.id = d.id; return data; });
+    var pending = all.filter(function(j){ return j.active !== false && j.approved !== true; });
+    renderPendingJobs(pending);
+  }, function(err){ console.warn("Pending listener error:", err); });
 }
-async function approveJob(id){
-  if (!(isAuthenticated && currentUser?.role === "ADMIN")) { showToast("Only admins can approve.", "error", 1800); return; }
-  try {
-    await db.collection("jobs").doc(id).update({
-      approved: true,
-      approvedBy: currentUser.id,
-      approvedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-  } catch (e) { showToast("Approve failed: " + (e?.message || e), "error", 2800); }
+function approveJob(id){
+  if (!(isAuthenticated && currentUser && currentUser.role === "ADMIN")) { showToast("Only admins can approve.", "error", 1800); return; }
+  db.collection("jobs").doc(id).update({
+    approved: true,
+    approvedBy: currentUser.id,
+    approvedAt: (window.firebase && window.firebase.firestore) ? window.firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString()
+  }).catch(function(e){ showToast("Approve failed: " + (e && e.message ? e.message : e), "error", 2800); });
 }
-async function rejectJob(id){
-  if (!(isAuthenticated && currentUser?.role === "ADMIN")) { showToast("Only admins can reject.", "error", 1800); return; }
-  try {
-    await db.collection("jobs").doc(id).update({ active: false, approved: false });
-  } catch (e) { showToast("Reject failed: " + (e?.message || e), "error", 2800); }
+function rejectJob(id){
+  if (!(isAuthenticated && currentUser && currentUser.role === "ADMIN")) { showToast("Only admins can reject.", "error", 1800); return; }
+  db.collection("jobs").doc(id).update({ active: false, approved: false })
+    .catch(function(e){ showToast("Reject failed: " + (e && e.message ? e.message : e), "error", 2800); });
 }
 
 /* ---------- Profile hydrate ---------- */
 function hydrateProfileForm() {
   if (!currentUser) return;
-  const profileName = $("profileName");
-  const profileEmail = $("profileEmail");
-  const profileInstitution = $("profileInstitution");
-  const currentPhoto = $("currentPhoto");
+  var profileName = $("profileName");
+  var profileEmail = $("profileEmail");
+  var profileInstitution = $("profileInstitution");
+  var currentPhoto = $("currentPhoto");
   if (profileName) profileName.value = currentUser.name || "";
   if (profileEmail) profileEmail.value = currentUser.email || "";
   if (profileInstitution) profileInstitution.value = currentUser.institution || "";
@@ -665,42 +686,42 @@ function hydrateProfileForm() {
 
 /* Forms (auth) */
 function wireAuthForms() {
-  const signupForm = $("signupForm");
+  var signupForm = $("signupForm");
   if (signupForm) {
-    signupForm.addEventListener("submit", (e) => {
+    signupForm.addEventListener("submit", function(e){
       e.preventDefault();
-      const name = safeGetValue("signupName");
-      const email = safeGetValue("signupEmail");
-      const password = safeGetValue("signupPassword");
-      const role = safeGetValue("signupRole") || "CANDIDATE";
-      const institution = safeGetValue("signupInstitution") || "";
-      let photo = null;
-      const preview = $("photoPreview");
+      var name = safeGetValue("signupName");
+      var email = safeGetValue("signupEmail");
+      var password = safeGetValue("signupPassword");
+      var role = safeGetValue("signupRole") || "CANDIDATE";
+      var institution = safeGetValue("signupInstitution") || "";
+      var photo = null;
+      var preview = $("photoPreview");
       if (preview && preview.src && !preview.classList.contains("hidden")) photo = preview.src;
       if (!email || !password) { showToast("Please enter email and password.", "error", 1800); return; }
-      signUp({ name, email, password, role, institution, photo });
+      signUp({ name: name, email: email, password: password, role: role, institution: institution, photo: photo });
     });
   }
-  const signinForm = $("signinForm");
+  var signinForm = $("signinForm");
   if (signinForm) {
-    signinForm.addEventListener("submit", (e) => {
+    signinForm.addEventListener("submit", function(e){
       e.preventDefault();
-      const email = safeGetValue("signinEmail");
-      const password = safeGetValue("signinPassword");
+      var email = safeGetValue("signinEmail");
+      var password = safeGetValue("signinPassword");
       if (!email || !password) { showToast("Please enter email and password.", "error", 1800); return; }
       signIn(email, password);
     });
-    // Forgot password button (JS-added)
-    const card = document.querySelector("#signinPage .auth-card");
-    if (card && !document.getElementById("forgotPasswordBtn")) {
-      const btn = document.createElement("button");
+    // Forgot password convenience button
+    var card = document.querySelector("#signinPage .auth-card");
+    if (card && !$("forgotPasswordBtn")) {
+      var btn = document.createElement("button");
       btn.type = "button";
       btn.id = "forgotPasswordBtn";
       btn.className = "btn btn--secondary btn--full-width";
       btn.style.marginTop = "10px";
       btn.textContent = "Forgot password? Email me a reset link";
-      btn.onclick = () => {
-        const email = prompt("Enter your account email:");
+      btn.onclick = function(){
+        var email = prompt("Enter your account email:");
         if (email) forgotPassword(email.trim());
       };
       card.appendChild(btn);
@@ -709,44 +730,33 @@ function wireAuthForms() {
 }
 
 /* --------------- On Load --------------- */
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", function(){
   loadSession();
 
   if (auth && typeof auth.onAuthStateChanged === "function") {
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        if (!user.emailVerified) {
-          isAuthenticated = false; currentUser = null; saveSession();
-        } else {
-          let userData = {};
-          try { const doc = await db.collection("users").doc(user.uid).get(); userData = doc.exists ? doc.data() : {}; } catch {}
+    auth.onAuthStateChanged(function(user){
+      if (user && user.emailVerified) {
+        db && db.collection("users").doc(user.uid).get().then(function(doc){
+          var userData = doc.exists ? (doc.data() || {}) : {};
           currentUser = {
             id: user.uid,
-            name: userData.name || currentUser?.name || "User",
-            email: user.email || currentUser?.email || "",
-            role: userData.role || currentUser?.role || "CANDIDATE",
-            institution: userData.institution || currentUser?.institution || "",
-            photo: userData.photo || currentUser?.photo || null
+            name: userData.name || (currentUser && currentUser.name) || "User",
+            email: user.email || (currentUser && currentUser.email) || "",
+            role: userData.role || (currentUser && currentUser.role) || "CANDIDATE",
+            institution: userData.institution || (currentUser && currentUser.institution) || "",
+            photo: userData.photo || (currentUser && currentUser.photo) || null
           };
           isAuthenticated = true; saveSession();
-        }
+          updateNavigation(); hydrateProfileForm();
+        }).catch(function(){
+          isAuthenticated = true; saveSession(); updateNavigation(); hydrateProfileForm();
+        });
       } else {
-        loadSession();
+        loadSession(); updateNavigation(); hydrateProfileForm();
       }
-
-      if (isAuthenticated && currentUser?.role === "ADMIN") {
-        subscribePendingJobs();
-      } else if (pendingUnsub) {
-        try { pendingUnsub(); } catch {} pendingUnsub = null;
-        const host = $("pendingJobsList"); if (host) host.innerHTML = "";
-      }
-
-      updateNavigation();
-      hydrateProfileForm();
     });
   } else {
-    updateNavigation();
-    hydrateProfileForm();
+    updateNavigation(); hydrateProfileForm();
   }
 
   wireAuthForms();
