@@ -303,76 +303,132 @@
     </section>
   </div>
 
-  <!-- Post Job Page -->
   <div id="postJobPage" class="page hidden">
-    <section class="post-job">
-      <div class="container">
-        <div class="page-header">
-          <h1>Post a New Position</h1>
-          <p>Find the perfect candidate for your institution</p>
+  <section class="post-job">
+    <div class="container">
+      <div class="page-header">
+        <h1>Post a New Position</h1>
+        <p>Find the perfect candidate for your institution</p>
+      </div>
+
+      <form id="postJobForm" class="post-job-form two-col-form">
+        <!-- ============ Two Column Grid ============ -->
+        <div class="form-grid two-col">
+
+          <!-- Position Title -->
+          <div class="form-group">
+            <label for="postTitle" class="form-label">Position Title</label>
+            <input type="text" id="postTitle" class="form-control" required placeholder="e.g., Assistant Professor — Computer Science">
+            <div class="helper-text">Manual entry; clear and specific title.</div>
+          </div>
+
+          <!-- Institution Type -->
+          <div class="form-group">
+            <label for="postInstitutionType" class="form-label">Institution Type</label>
+            <input type="text" id="postInstitutionType" class="form-control" placeholder="e.g., Government, Private, Central">
+            <div class="helper-text">Manual entry (hint: govt, private, central).</div>
+          </div>
+
+          <!-- Departments (multi-select) -->
+          <div class="form-group">
+            <label for="postDepartments" class="form-label">Department(s)</label>
+            <select id="postDepartments" class="form-control" multiple size="8" required>
+              <option value="Computer Science">Computer Science</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Physics">Physics</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Biology">Biology</option>
+              <option value="Electrical Engineering">Electrical Engineering</option>
+              <option value="Mechanical Engineering">Mechanical Engineering</option>
+              <option value="Civil Engineering">Civil Engineering</option>
+              <option value="Humanities">Humanities</option>
+              <option value="Economics">Economics</option>
+              <option value="Management">Management</option>
+              <option value="Law">Law</option>
+              <option value="Medical Sciences">Medical Sciences</option>
+              <option value="Interdisciplinary">Interdisciplinary</option>
+              <option value="Other">Other</option>
+            </select>
+            <div class="helper-text">Hold Ctrl/Cmd (or drag) to select multiple departments.</div>
+          </div>
+
+          <!-- Position Levels (multi-select) -->
+          <div class="form-group">
+            <label for="postLevels" class="form-label">Position Level(s)</label>
+            <select id="postLevels" class="form-control" multiple size="8" required>
+              <option value="Assistant Professor">Assistant Professor</option>
+              <option value="Associate Professor">Associate Professor</option>
+              <option value="Professor">Professor</option>
+              <option value="Post DOC">Post DOC</option>
+              <option value="JRF">JRF</option>
+              <option value="Project Fellow">Project Fellow</option>
+              <option value="Leadership Role">Leadership Role</option>
+              <option value="Non-Academic">Non-Academic</option>
+              <option value="Others">Others</option>
+            </select>
+            <div class="helper-text">You can recruit for multiple levels in one post.</div>
+          </div>
+
+          <!-- Description -->
+          <div class="form-group col-span-2">
+            <label for="postDescription" class="form-label">Description</label>
+            <textarea id="postDescription" class="form-control" rows="6" required
+              placeholder="Write about the job in detail: responsibilities, required qualifications, desirable skills, how to apply, selection process, and contact info."></textarea>
+          </div>
+
+          <!-- Institution Name -->
+          <div class="form-group">
+            <label for="postInstitution" class="form-label">Institution Name</label>
+            <input type="text" id="postInstitution" class="form-control" required placeholder="e.g., IIT Patna">
+            <div class="helper-text">Manual entry (example shown).</div>
+          </div>
+
+          <!-- Location -->
+          <div class="form-group">
+            <label for="postLocation" class="form-label">Location</label>
+            <input type="text" id="postLocation" class="form-control" required placeholder="e.g., Mumbai, India">
+            <div class="helper-text">Manual entry (example shown).</div>
+          </div>
+
+          <!-- Application Link -->
+          <div class="form-group">
+            <label for="postApplyLink" class="form-label">Application Link</label>
+            <input type="url" id="postApplyLink" class="form-control" placeholder="Paste the official advertisement or application link">
+            <div class="helper-text">Provide appropriate link of ad (optional).</div>
+          </div>
+
+          <!-- Salary Range -->
+          <div class="form-group">
+            <label for="postSalary" class="form-label">Salary Range</label>
+            <input type="text" id="postSalary" class="form-control" placeholder="e.g., ₹10 LPA – ₹25 LPA">
+            <div class="helper-text">Example shown; optional.</div>
+          </div>
+
+          <!-- Deadline -->
+          <div class="form-group">
+            <label for="postDeadline" class="form-label">Application Deadline</label>
+            <input type="date" id="postDeadline" class="form-control" required>
+            <div class="helper-text">Select from calendar (we’ll format it as dd/mm/yyyy in the UI).</div>
+          </div>
+
+          <!-- Image Upload -->
+          <div class="form-group">
+            <label for="postJobImage" class="form-label">Attach an Image (optional)</label>
+            <input type="file" id="postJobImage" accept="image/*" class="form-control">
+            <div class="helper-text">Add a poster/banner. Large images are automatically resized.</div>
+            <div class="photo-preview" style="margin-top:8px;">
+              <img id="postJobImagePreview" src="" alt="" class="hidden" style="max-height:180px;border-radius:12px;">
+            </div>
+          </div>
+
         </div>
 
-        <form id="postJobForm" class="post-job-form">
-          <div class="form-section">
-            <h2>Position Details</h2>
-            <div class="form-group">
-              <label class="form-label">Position Title</label>
-              <input type="text" id="postTitle" class="form-control" required>
-            </div>
+        <button type="submit" class="btn btn--primary btn--lg" style="margin-top:12px;">Post Position</button>
+      </form>
+    </div>
+  </section>
+</div>
 
-            <div class="form-group">
-              <label class="form-label">Department</label>
-              <input type="text" id="postDepartment" class="form-control" required>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Position Level</label>
-              <select id="postLevel" class="form-control" required>
-                <option value="">Select Level</option>
-                <option value="Assistant Professor">Assistant Professor</option>
-                <option value="Associate Professor">Associate Professor</option>
-                <option value="Full Professor">Full Professor</option>
-                <option value="Lecturer">Lecturer</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Description</label>
-              <textarea id="postDescription" class="form-control" rows="6" required></textarea>
-            </div>
-          </div>
-
-          <div class="form-section">
-            <h2>Institution Information</h2>
-            <div class="form-group">
-              <label class="form-label">Institution Name</label>
-              <input type="text" id="postInstitution" class="form-control" required>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Location</label>
-              <input type="text" id="postLocation" class="form-control" required>
-            </div>
-          </div>
-
-          <div class="form-section">
-            <h2>Application Details</h2>
-            <div class="form-group">
-              <label class="form-label">Salary Range</label>
-              <input type="text" id="postSalary" placeholder="e.g., $80,000 - $120,000" class="form-control">
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Application Deadline</label>
-              <input type="date" id="postDeadline" class="form-control" required>
-            </div>
-          </div>
-
-          <button type="submit" class="btn btn--primary btn--lg">Post Position</button>
-        </form>
-      </div>
-    </section>
-  </div>
 
   <!-- Admin Page -->
   <div id="adminPage" class="page hidden">
