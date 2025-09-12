@@ -1,3 +1,23 @@
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyCBQfwpbnDdPPl0LdeXPWAc_o-Nd67EnsY",
+  authDomain: "jobs-ff5a9.firebaseapp.com",
+  projectId: "jobs-ff5a9",
+  storageBucket: "jobs-ff5a9.firebasestorage.app",
+  messagingSenderId: "110232650978",
+  appId: "1:110232650978:web:ca2187d10b3df0007f8abb",
+  measurementId: "G-1S3LY2D6DD"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+
+// Firebase services
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+
+
 // Application data
 const applicationData = {
   "featured_positions": [
