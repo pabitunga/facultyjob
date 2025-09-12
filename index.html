@@ -6,7 +6,7 @@
   <title>FacultyJobs - Find Your Perfect Academic Position</title>
   <link rel="stylesheet" href="style.css"/>
 
-  <!-- Firebase COMPAT SDKs (namespaced API: firebase.auth(), firebase.firestore()) -->
+  <!-- Firebase COMPAT SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -21,6 +21,7 @@
       <div class="nav__menu" id="navMenu">
         <a href="javascript:void(0)" onclick="showPage('home')" class="nav__link">Home</a>
         <a href="javascript:void(0)" onclick="showPage('jobs')" class="nav__link">Find Jobs</a>
+        <a href="javascript:void(0)" onclick="showPage('archive')" class="nav__link">Archive</a>
         <a href="javascript:void(0)" onclick="showPage('about')" class="nav__link">About</a>
 
         <!-- Anonymous user buttons -->
@@ -32,7 +33,7 @@
         <!-- Authenticated user menu -->
         <div id="authenticatedNav" class="nav__user hidden">
           <a href="javascript:void(0)" onclick="showPage('dashboard')" class="nav__link">Dashboard</a>
-          <!-- (Removed the header "Post Job" link as requested) -->
+          <!-- "Post Job" link removed in header as requested earlier -->
           <a href="javascript:void(0)" onclick="showPage('admin')" class="nav__link nav__admin hidden">Admin</a>
 
           <div class="user-menu">
@@ -69,32 +70,21 @@
           </p>
           <div class="hero__actions">
             <button class="btn btn--primary btn--lg" onclick="showPage('jobs')">Explore Positions</button>
-            <!-- Keep this button; handlePostJob() gates by role in app.js -->
+            <!-- This button is role-gated in app.js -->
             <button class="btn btn--outline btn--lg" onclick="handlePostJob()">Post a Job</button>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Featured Positions (filled by app.js; realtime) -->
+    <!-- Closing Soon (dynamic; shows latest jobs near deadline, up to 6) -->
     <section class="featured-positions">
       <div class="container">
         <div class="section__header">
-          <h2 class="section__title">Featured Positions</h2>
-          <p class="section__subtitle">Premium opportunities from top institutions worldwide</p>
+          <h2 class="section__title">Closing Soon</h2>
+          <p class="section__subtitle">Jobs whose application deadlines are coming up soon</p>
         </div>
-        <div class="positions-grid" id="featuredPositions"></div>
-      </div>
-    </section>
-
-    <!-- Why Choose -->
-    <section class="why-choose">
-      <div class="container">
-        <div class="section__header">
-          <h2 class="section__title">Why Choose FacultyJobs?</h2>
-          <p class="section__subtitle">The leading platform for academic career advancement</p>
-        </div>
-        <div class="benefits-grid" id="benefitsGrid"></div>
+        <div class="positions-grid" id="nearExpiryPositions"></div>
       </div>
     </section>
   </div>
@@ -144,6 +134,19 @@
           </div>
           <div class="positions-grid" id="allPositions"></div>
         </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Archive Page (expired jobs) -->
+  <div id="archivePage" class="page hidden">
+    <section class="page-content">
+      <div class="container">
+        <div class="page-header">
+          <h1>Archive</h1>
+          <p>Expired positions</p>
+        </div>
+        <div class="positions-grid" id="archivePositions"></div>
       </div>
     </section>
   </div>
@@ -433,34 +436,8 @@
           <div class="about-section">
             <h2>Our Mission</h2>
             <p>
-              FacultyJobs is dedicated to connecting talented academics with prestigious institutions worldwide. We believe that the right match between faculty and institution creates transformative educational and research experiences.
+              FacultyJobs is dedicated to connecting talented academics with prestigious institutions worldwide.
             </p>
-          </div>
-
-          <div class="about-section">
-            <h2>How It Works</h2>
-            <div class="steps-grid">
-              <div class="step">
-                <div class="step-number">1</div>
-                <h3>Create Profile</h3>
-                <p>Build your comprehensive academic profile</p>
-              </div>
-              <div class="step">
-                <div class="step-number">2</div>
-                <h3>Get Matched</h3>
-                <p>Our AI finds positions that fit your expertise</p>
-              </div>
-              <div class="step">
-                <div class="step-number">3</div>
-                <h3>Apply & Connect</h3>
-                <p>Apply to positions and connect with institutions</p>
-              </div>
-              <div class="step">
-                <div class="step-number">4</div>
-                <h3>Advance Career</h3>
-                <p>Land your dream position and grow your career</p>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -524,20 +501,17 @@
           <div class="footer__column">
             <h4>For Faculty</h4>
             <a href="javascript:void(0)" onclick="showPage('jobs')">Browse Jobs</a>
-            <a href="javascript:void(0)" onclick="alert('Career Resources coming soon!')">Career Resources</a>
-            <a href="javascript:void(0)" onclick="alert('Success Stories coming soon!')">Success Stories</a>
+            <a href="javascript:void(0)" onclick="showPage('archive')">Archived Jobs</a>
           </div>
           <div class="footer__column">
             <h4>For Universities</h4>
             <a href="javascript:void(0)" onclick="handlePostJob()">Post Jobs</a>
             <a href="javascript:void(0)" onclick="alert('Recruiting Solutions coming soon!')">Recruiting Solutions</a>
-            <a href="javascript:void(0)" onclick="alert('Pricing information coming soon!')">Pricing</a>
           </div>
           <div class="footer__column">
             <h4>Support</h4>
             <a href="javascript:void(0)" onclick="alert('Help Center coming soon!')">Help Center</a>
             <a href="javascript:void(0)" onclick="alert('Contact Us: support@facultyjobs.com')">Contact Us</a>
-            <a href="javascript:void(0)" onclick="alert('Privacy Policy coming soon!')">Privacy Policy</a>
           </div>
         </div>
       </div>
