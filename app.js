@@ -35,6 +35,45 @@ let isAuthenticated = false;
 /* Config: near-expiry window (days) */
 const NEAR_EXPIRY_DAYS = 7;
 
+
+// --- Toast helpers (non-blocking) ---
+function ensureToastContainer() {
+  let c = document.getElementById("toastContainer");
+  if (!c) {
+    c = document.createElement("div");
+    c.id = "toastContainer";
+    c.className = "toast-container";
+    document.body.appendChild(c);
+  }
+  return c;
+}
+
+function showToast(message, type = "info", duration = 2000) {
+  const container = ensureToastContainer();
+  const el = document.createElement("div");
+  el.className = "toast " + (type === "success" ? "toast--success" : type === "error" ? "toast--error" : "toast--info");
+  el.textContent = message;
+
+  container.appendChild(el);
+
+  // auto-hide
+  setTimeout(() => {
+    el.classList.add("toast--hide");
+    setTimeout(() => el.remove(), 300);
+  }, duration);
+}
+
+// Make our old showAlert() use the toast system
+function showAlert(msg, type = "info") {
+  showToast(msg, type, 2000);
+}
+
+// OPTIONAL but handy: convert any old window.alert calls to toasts too
+try { window.alert = (m) => showToast(String(m), "info", 2000); } catch {}
+// expose so inline onclick can use it
+window.showToast = showToast;
+
+
 /* ---------------- Helpers ---------------- */
 function $(id) { return document.getElementById(id); }
 function qsa(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
@@ -292,10 +331,21 @@ function wireProfileForm() {
   });
 }
 function handlePostJob() {
-  if (!isAuthenticated) { showAlert("Please sign in as an Employer to post a job."); showPage("signin"); return; }
-  if (currentUser.role === "EMPLOYER" || currentUser.role === "ADMIN") showPage("post-job");
-  else showAlert("Posting jobs is for Employers/Admins. You are currently a Candidate.");
+  if (!isAuthenticated) {
+    showToast("Please sign in to post a job.", "info", 2500);
+    showPage("signin");
+    return;
+  }
+
+  // Everyone signed in can open the page (Candidate posts become pending)
+  showPage("post-job");
+
+  const r = (currentUser?.role || "").toUpperCase();
+  if (!["EMPLOYER", "EMPLOYER_PENDING", "ADMIN"].includes(r)) {
+    showToast("Note: your job will go live after admin approval.", "info", 3000);
+  }
 }
+
 
 /* ================== JOBS (Realtime + Moderation + Archive) ================== */
 
