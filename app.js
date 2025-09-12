@@ -317,6 +317,111 @@ function handlePostJob() {
   if (currentUser.role === "EMPLOYER" || currentUser.role === "ADMIN") showPage("post-job");
   else showAlert("Posting jobs is for Employers/Admins. You are currently a Candidate.");
 }
+/* ================== JOBS (Realtime) ================== */
+function escapeHtml(str){ 
+  return (str||'').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+
+function jobCardHTML(j){
+  const desc = (j.description || "");
+  const short = desc.length > 180 ? desc.slice(0,180) + "…" : desc;
+  return `
+    <div class="card">
+      <div class="card__body">
+        <h3>${escapeHtml(j.title)}</h3>
+        <p>${escapeHtml(j.institution)} • ${escapeHtml(j.location)}</p>
+        <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+          ${escapeHtml(j.department)} • ${escapeHtml(j.level)}
+        </div>
+        <p style="margin-top:8px">${escapeHtml(short)}</p>
+        <div class="mt-8">
+          <button class="btn btn--primary btn--sm" onclick="alert('Apply flow coming soon!')">Apply</button>
+          <button class="btn btn--outline btn--sm mx-8" onclick="alert('Saved!')">Save</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderAllPositions(jobs){
+  const el = document.getElementById("allPositions");
+  if (!el) return;
+  if (!jobs.length){
+    el.innerHTML = `<p style="color:var(--text-muted)">No jobs posted yet.</p>`;
+    return;
+  }
+  el.innerHTML = jobs.map(jobCardHTML).join("");
+}
+
+function renderFeaturedPositionsFromJobs(jobs){
+  const el = document.getElementById("featuredPositions");
+  if (!el) return;
+  const top3 = jobs.slice(0,3);
+  el.innerHTML = top3.map(jobCardHTML).join("");
+}
+
+let jobsUnsub = null;
+function subscribeToJobs(){
+  if (!db) return;
+  try { if (jobsUnsub) jobsUnsub(); } catch {}
+  jobsUnsub = db.collection("jobs")
+    .orderBy("createdAt", "desc")
+    .onSnapshot((snap) => {
+      const jobs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(j => j.active !== false); // show all unless explicitly inactive
+      renderAllPositions(jobs);
+      renderFeaturedPositionsFromJobs(jobs);
+    }, (err) => {
+      console.warn("Jobs listener error:", err);
+    });
+}
+
+function wirePostJobForm(){
+  const form = document.getElementById("postJobForm");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!isAuthenticated) {
+      showAlert("Please sign in as an Employer to post a job.");
+      showPage("signin");
+      return;
+    }
+    if (!(currentUser.role === "EMPLOYER" || currentUser.role === "ADMIN")) {
+      showAlert("Only Employers/Admins can post jobs.");
+      return;
+    }
+
+    const job = {
+      title: safeGetValue("postTitle").trim(),
+      department: safeGetValue("postDepartment").trim(),
+      level: safeGetValue("postLevel"),
+      description: safeGetValue("postDescription").trim(),
+      institution: safeGetValue("postInstitution").trim(),
+      location: safeGetValue("postLocation").trim(),
+      salaryRange: safeGetValue("postSalary").trim(),
+      deadline: safeGetValue("postDeadline"),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      postedBy: currentUser.id,
+      postedByName: currentUser.name || "",
+      postedByInstitution: currentUser.institution || "",
+      active: true
+    };
+
+    if (!job.title || !job.department || !job.level || !job.description || !job.institution || !job.location || !job.deadline) {
+      showAlert("Please fill all required fields.");
+      return;
+    }
+
+    try {
+      await db.collection("jobs").add(job);
+      showAlert("Job posted! It’s now visible to everyone.");
+      form.reset();
+      showPage("jobs");
+    } catch (err) {
+      showAlert("Error posting job: " + (err?.message || err));
+    }
+  });
+}
 
 /* Demo content */
 function renderFeaturedPositions() {
@@ -463,6 +568,9 @@ document.addEventListener("DOMContentLoaded", () => {
   wireAuthForms();
   wirePhotoUpload();
   wireProfileForm();
+  wirePostJobForm();
+  subscribeToJobs();
+
   renderFeaturedPositions();
   renderBenefits();
 });
