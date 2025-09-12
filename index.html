@@ -319,17 +319,20 @@
             <h2>Position Details</h2>
             <div class="form-group">
               <label class="form-label">Position Title</label>
-              <input type="text" class="form-control" required />
+              <input type="text" id="postTitle" class="form-control" required>
+              //<input type="text" class="form-control" required />
             </div>
 
             <div class="form-group">
               <label class="form-label">Department</label>
-              <input type="text" class="form-control" required />
+              <input type="text" id="postDepartment" class="form-control" required>
+              // <input type="text" class="form-control" required />
             </div>
 
             <div class="form-group">
               <label class="form-label">Position Level</label>
-              <select class="form-control" required>
+              <select id="postLevel" class="form-control" required>
+              // <select class="form-control" required>
                 <option value="">Select Level</option>
                 <option value="assistant">Assistant Professor</option>
                 <option value="associate">Associate Professor</option>
@@ -340,7 +343,9 @@
 
             <div class="form-group">
               <label class="form-label">Description</label>
-              <textarea class="form-control" rows="6" required></textarea>
+              <textarea id="postDescription" class="form-control" rows="6" required></textarea>
+
+            // <textarea class="form-control" rows="6" required></textarea>
             </div>
           </div>
 
@@ -348,12 +353,14 @@
             <h2>Institution Information</h2>
             <div class="form-group">
               <label class="form-label">Institution Name</label>
-              <input type="text" class="form-control" required />
+              <input type="text" id="postInstitution" class="form-control" required>
+
             </div>
 
             <div class="form-group">
               <label class="form-label">Location</label>
-              <input type="text" class="form-control" required />
+             <input type="text" id="postLocation" class="form-control" required>
+
             </div>
           </div>
 
@@ -361,12 +368,14 @@
             <h2>Application Details</h2>
             <div class="form-group">
               <label class="form-label">Salary Range</label>
-              <input type="text" placeholder="e.g., $80,000 - $120,000" class="form-control" />
+             <input type="text" id="postSalary" placeholder="e.g., $80,000 - $120,000" class="form-control" />
+
             </div>
 
             <div class="form-group">
               <label class="form-label">Application Deadline</label>
-              <input type="date" class="form-control" required />
+             <input type="date" id="postDeadline" class="form-control" required />
+
             </div>
           </div>
 
