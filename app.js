@@ -1,30 +1,32 @@
-/* ===============================
-   FacultyJobs – app.js (compat SDK)
-   Single source of truth for Firebase init + app logic
-   =============================== */
+/* ===========================================
+   FacultyJobs – app.js (compat SDK version)
+   - Firebase init here (uses compat scripts in index.html)
+   - Email verification (signup + sign-in gate)
+   - Forgot password (reset email)
+   =========================================== */
 
 "use strict";
 
-/* ---------------- Firebase Init ---------------- */
-// Requires the compat scripts in index.html:
-// firebase-app-compat.js, firebase-auth-compat.js, firebase-firestore-compat.js
+/* -------- Firebase Init (single source of truth) --------
+   Make sure index.html includes:
+   firebase-app-compat.js, firebase-auth-compat.js, firebase-firestore-compat.js
+*/
 (function initFirebase() {
   if (window.firebase && window.firebase.apps && window.firebase.apps.length) {
     console.log("[Firebase] Reusing existing app");
     return;
   }
 
-  // ✅ Your config (storageBucket corrected to appspot.com)
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyCBQfwpbnDdPPl0LdeXPWAc_o-Nd67EnsY",
-  authDomain: "jobs-ff5a9.firebaseapp.com",
-  projectId: "jobs-ff5a9",
-  storageBucket: "jobs-ff5a9.firebasestorage.app",
-  messagingSenderId: "110232650978",
-  appId: "1:110232650978:web:64c20408089e75487f8abb",
-  measurementId: "G-WW68CSEMM6"
-};
+  // ✅ Your configuration (storageBucket corrected to appspot.com)
+  const firebaseConfig = {
+    apiKey: "AIzaSyCBQfwpbnDdPPl0LdeXPWAc_o-Nd67EnsY",
+    authDomain: "jobs-ff5a9.firebaseapp.com",
+    projectId: "jobs-ff5a9",
+    storageBucket: "jobs-ff5a9.appspot.com",
+    messagingSenderId: "110232650978",
+    appId: "1:110232650978:web:ca2187d10b3df0007f8abb",
+    measurementId: "G-1S3LY2D6DD" // optional
+  };
 
   try {
     window.firebase.initializeApp(firebaseConfig);
@@ -129,13 +131,36 @@ document.addEventListener("click", (e) => {
   if (dd && trigger && !dd.contains(e.target) && !trigger.contains(e.target)) dd.classList.add("hidden");
 });
 
-/* ---------------- Auth ---------------- */
+/* ================== AUTH ================== */
+/* --- Email Verification Helpers --- */
+async function sendVerificationEmail(user) {
+  try {
+    await user.sendEmailVerification(); // compat method on user
+  } catch (err) {
+    console.warn("sendEmailVerification error:", err);
+  }
+}
+
+async function handleUnverifiedSignIn(user) {
+  await sendVerificationEmail(user); // (re)send on sign-in if still unverified
+  showAlert("We sent a verification link to: " + (user.email || "your email") +
+            ". Please verify, then sign in again.");
+  await auth.signOut();     // block access until verified
+  isAuthenticated = false;
+  currentUser = null;
+  clearSession();
+  updateNavigation();
+  showPage("signin");
+}
+
+/* --- Sign Up --- */
 async function signUp(formData) {
   if (!ensureFirebase("Authentication")) return;
   try {
     const cred = await auth.createUserWithEmailAndPassword(formData.email, formData.password);
     const user = cred.user;
 
+    // Save profile in Firestore
     await db.collection("users").doc(user.uid).set({
       name: formData.name || "",
       role: formData.role || "CANDIDATE",
@@ -144,30 +169,34 @@ async function signUp(formData) {
       createdAt: new Date().toISOString()
     });
 
-    currentUser = {
-      id: user.uid,
-      name: formData.name || "",
-      email: formData.email,
-      role: formData.role || "CANDIDATE",
-      institution: formData.institution || "",
-      photo: formData.photo || null
-    };
-    isAuthenticated = true;
-    saveSession();
+    // Send verification & require verification before using the app
+    await sendVerificationEmail(user);
+    showAlert("Verification email sent to " + (user.email || "your email") + ". Please verify, then sign in.");
+    await auth.signOut();        // block until verified
+    isAuthenticated = false;
+    currentUser = null;
+    clearSession();
     updateNavigation();
-    showAlert("Account created successfully!");
-    showPage("dashboard");
+    showPage("signin");
   } catch (err) {
     showAlert("Sign up error: " + (err?.message || err));
   }
 }
 
+/* --- Sign In --- */
 async function signIn(email, password) {
   if (!ensureFirebase("Authentication")) return;
   try {
     const cred = await auth.signInWithEmailAndPassword(email, password);
     const user = cred.user;
 
+    // Gate: require verified email
+    if (!user.emailVerified) {
+      await handleUnverifiedSignIn(user);
+      return;
+    }
+
+    // Load extended profile
     let userData = {};
     try {
       const doc = await db.collection("users").doc(user.uid).get();
@@ -192,6 +221,7 @@ async function signIn(email, password) {
   }
 }
 
+/* --- Sign Out --- */
 async function signOut() {
   if (!ensureFirebase("Authentication")) {
     isAuthenticated = false; currentUser = null; clearSession(); updateNavigation(); showPage("home"); return;
@@ -204,7 +234,19 @@ async function signOut() {
   showPage("home");
 }
 
-/* ---------------- Photo Upload (Signup & Profile) ---------------- */
+/* --- Forgot Password --- */
+async function forgotPassword(email) {
+  if (!ensureFirebase("Authentication")) return;
+  try {
+    await auth.sendPasswordResetEmail(email);
+    showAlert("Password reset email sent to " + email + ". Check your inbox.");
+  } catch (err) {
+    showAlert("Reset error: " + (err?.message || err));
+  }
+}
+
+/* ================== UI Wiring ================== */
+/* Photo Upload (Signup & Profile) */
 function wirePhotoUpload() {
   const upload = $("photoUpload");
   const previewImg = $("photoPreview");
@@ -249,7 +291,7 @@ function wirePhotoUpload() {
   }
 }
 
-/* ---------------- Profile Save ---------------- */
+/* Profile Save */
 function wireProfileForm() {
   const form = $("profileForm");
   if (!form) return;
@@ -269,14 +311,14 @@ function wireProfileForm() {
   });
 }
 
-/* ---------------- Role Gate ---------------- */
+/* Post Job Role Gate */
 function handlePostJob() {
   if (!isAuthenticated) { showAlert("Please sign in as an Employer to post a job."); showPage("signin"); return; }
   if (currentUser.role === "EMPLOYER" || currentUser.role === "ADMIN") showPage("post-job");
   else showAlert("Posting jobs is for Employers/Admins. You are currently a Candidate.");
 }
 
-/* ---------------- Demo Content ---------------- */
+/* Demo content */
 function renderFeaturedPositions() {
   const el = $("featuredPositions");
   if (!el) return;
@@ -299,7 +341,6 @@ function renderFeaturedPositions() {
     </div>
   `).join("");
 }
-
 function renderBenefits() {
   const el = $("benefitsGrid");
   if (!el) return;
@@ -313,7 +354,7 @@ function renderBenefits() {
   `).join("");
 }
 
-/* ---------------- Form Wiring ---------------- */
+/* Forms wiring (Signup / Signin) */
 function wireAuthForms() {
   const signupForm = $("signupForm");
   if (signupForm) {
@@ -342,10 +383,26 @@ function wireAuthForms() {
       if (!email || !password) { showAlert("Please enter email and password."); return; }
       signIn(email, password);
     });
+
+    // Add a "Forgot password?" button under the sign-in form (no HTML edits needed)
+    const card = document.querySelector("#signinPage .auth-card");
+    if (card && !document.getElementById("forgotPasswordBtn")) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.id = "forgotPasswordBtn";
+      btn.className = "btn btn--secondary btn--full-width";
+      btn.style.marginTop = "10px";
+      btn.textContent = "Forgot password? Email me a reset link";
+      btn.onclick = () => {
+        const email = prompt("Enter your account email:");
+        if (email) forgotPassword(email.trim());
+      };
+      card.appendChild(btn);
+    }
   }
 }
 
-/* ---------------- Profile Hydration ---------------- */
+/* Hydrate profile form */
 function hydrateProfileForm() {
   if (!currentUser) return;
   const profileName = $("profileName");
@@ -359,13 +416,24 @@ function hydrateProfileForm() {
   if (currentPhoto && currentUser.photo) currentPhoto.src = currentUser.photo;
 }
 
-/* ---------------- On Load ---------------- */
+/* --------------- On Load --------------- */
 document.addEventListener("DOMContentLoaded", () => {
   loadSession();
 
   if (auth && typeof auth.onAuthStateChanged === "function") {
     auth.onAuthStateChanged(async (user) => {
       if (user) {
+        // If not verified, do NOT authenticate/allow navigation
+        if (!user.emailVerified) {
+          // (Optional) Do nothing here; sign-in flow will already handle sending + sign-out.
+          // Keep showing anonymous nav.
+          isAuthenticated = false;
+          currentUser = null;
+          updateNavigation();
+          return;
+        }
+
+        // Verified user → hydrate profile
         let userData = {};
         try {
           const doc = await db.collection("users").doc(user.uid).get();
@@ -382,7 +450,7 @@ document.addEventListener("DOMContentLoaded", () => {
         isAuthenticated = true;
         saveSession();
       } else {
-        loadSession(); // fall back to any saved local session
+        loadSession(); // fall back to any saved session
       }
       updateNavigation();
       hydrateProfileForm();
@@ -399,8 +467,9 @@ document.addEventListener("DOMContentLoaded", () => {
   renderBenefits();
 });
 
-/* ---------------- Expose for HTML onclick ---------------- */
+/* Expose for HTML onclick */
 window.showPage = showPage;
 window.toggleUserDropdown = toggleUserDropdown;
 window.signOut = signOut;
 window.handlePostJob = handlePostJob;
+
