@@ -1,759 +1,871 @@
-/* ===========================================
-FacultyJobs – Enhanced JavaScript with Fixed Job Visibility
-Modern, production-ready application
-=========================================== */
-
-"use strict";
-
-/* -------- Firebase Configuration -------- */
-const firebaseConfig = {
-  apiKey: "AIzaSyCBQfwpbnDdPPl0LdeXPWAc_o-Nd67EnsY",
-  authDomain: "jobs-ff5a9.firebaseapp.com",
-  projectId: "jobs-ff5a9",
-  storageBucket: "jobs-ff5a9.firebasestorage.app",
-  messagingSenderId: "110232650978",
-  appId: "1:110232650978:web:64c20408089e75487f8abb",
-  measurementId: "G-WW68CSEMM6"
-};
-
-/* -------- Global State -------- */
-let app, db, auth, storage;
-let currentUser = null;
-let userRole = 'candidate';
-let allJobs = [];
-let isInitialized = false;
-
-/* -------- Firebase Initialization -------- */
-function initializeFirebase() {
-  try {
-    if (!window.firebase) {
-      console.error('❌ Firebase SDK not loaded');
-      showToast('Error: Firebase not available', 'error');
-      return false;
-    }
-
-    app = firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
-    auth = firebase.auth();
-    storage = firebase.storage();
-    
-    console.log('✅ Firebase initialized successfully');
-    return true;
-  } catch (error) {
-    console.error('❌ Firebase initialization failed:', error);
-    showToast('Failed to initialize application', 'error');
-    return false;
-  }
-}
-
-/* -------- Enhanced Authentication -------- */
-function setupAuthStateListener() {
-  auth.onAuthStateChanged(async (user) => {
-    console.log(`🔄 Auth state: ${user ? 'Signed in' : 'Signed out'}`);
-    currentUser = user;
-    
-    if (user) {
-      try {
-        await loadUserProfile();
-        updateUIForAuthenticated();
-        console.log(`✅ User loaded: ${user.email} (${userRole})`);
-      } catch (error) {
-        console.error('❌ Error loading user:', error);
-        userRole = 'candidate';
-        updateUIForAuthenticated();
-      }
-    } else {
-      userRole = 'candidate';
-      updateUIForUnauthenticated();
-    }
-    
-    // Load jobs for current page
-    if (isCurrentPage('jobs') || isCurrentPage('home')) {
-      await loadJobs();
-    }
-  });
-}
-
-async function loadUserProfile() {
-  if (!currentUser || !db) return;
-  
-  try {
-    const userDoc = await db.collection('users').doc(currentUser.uid).get();
-    
-    if (userDoc.exists) {
-      const userData = userDoc.data();
-      userRole = userData.role || 'candidate';
-      updateUserDisplay(userData);
-    } else {
-      // Create new user profile
-      await createUserProfile();
-    }
-  } catch (error) {
-    console.error('❌ Error loading user profile:', error);
-    throw error;
-  }
-}
-
-async function createUserProfile() {
-  if (!currentUser || !db) return;
-  
-  try {
-    const userData = {
-      displayName: currentUser.displayName || currentUser.email.split('@')[0],
-      email: currentUser.email,
-      role: 'candidate',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      isActive: true
-    };
-    
-    await db.collection('users').doc(currentUser.uid).set(userData);
-    userRole = 'candidate';
-    console.log('✅ User profile created');
-  } catch (error) {
-    console.error('❌ Error creating user profile:', error);
-    throw error;
-  }
-}
-
-/* -------- FIXED: Enhanced Job Management -------- */
-async function loadJobs() {
-  try {
-    console.log('📋 Loading jobs...');
-    
-    if (!db) {
-      console.warn('⚠️ Database not initialized');
-      return;
-    }
-
-    // FIXED: Query for approved jobs only
-    const jobsQuery = db.collection('jobs')
-      .where('status', '==', 'approved')
-      .orderBy('createdAt', 'desc')
-      .limit(50);
-
-    const snapshot = await jobsQuery.get();
-    
-    allJobs = [];
-    snapshot.forEach(doc => {
-      const jobData = doc.data();
-      allJobs.push({
-        id: doc.id,
-        ...jobData,
-        createdAt: jobData.createdAt?.toDate() || new Date()
-      });
-    });
-
-    console.log(`✅ Loaded ${allJobs.length} jobs`);
-    displayJobs(allJobs);
-    
-  } catch (error) {
-    console.error('❌ Error loading jobs:', error);
-    showToast('Failed to load jobs', 'error');
-    displayNoJobs();
-  }
-}
-
-async function submitJob(jobData) {
-  try {
-    if (!currentUser || !db) {
-      throw new Error('Authentication required');
-    }
-
-    console.log('📝 Submitting job...');
-
-    // FIXED: Role-based status assignment
-    let status = 'pending'; // Default for candidates
-    if (userRole === 'employer' || userRole === 'admin') {
-      status = 'approved'; // Auto-approve for employers/admins
-    }
-
-    const jobDoc = {
-      ...jobData,
-      status: status,
-      postedBy: currentUser.uid,
-      posterEmail: currentUser.email,
-      posterRole: userRole,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      isActive: true,
-      viewCount: 0,
-      applicationCount: 0
-    };
-
-    const docRef = await db.collection('jobs').add(jobDoc);
-    
-    console.log(`✅ Job submitted: ${docRef.id} (${status})`);
-    
-    if (status === 'approved') {
-      showToast('Job posted successfully! 🎉', 'success');
-      // Refresh jobs if on jobs page
-      if (isCurrentPage('jobs')) {
-        setTimeout(loadJobs, 1000);
-      }
-    } else {
-      showToast('Job submitted for review', 'info');
-    }
-
-    return docRef.id;
-
-  } catch (error) {
-    console.error('❌ Error submitting job:', error);
-    showToast('Failed to submit job', 'error');
-    throw error;
-  }
-}
-
-/* -------- Enhanced UI Functions -------- */
-function displayJobs(jobs) {
-  const containers = [
-    document.getElementById('jobsList'),
-    document.getElementById('featuredJobs'),
-    document.querySelector('.positions-grid')
-  ].filter(Boolean);
-
-  if (containers.length === 0) {
-    console.warn('⚠️ No job containers found');
-    return;
-  }
-
-  if (!jobs || jobs.length === 0) {
-    containers.forEach(container => {
-      container.innerHTML = `
-        <div class="no-jobs-message">
-          <div class="empty-state">
-            <div class="empty-icon">📋</div>
-            <h3>No positions available</h3>
-            <p>Check back soon for new opportunities!</p>
-            ${userRole !== 'candidate' ? 
-              '<button class="btn btn--primary" onclick="showPage(\'post-job\')">Post a Position</button>' : ''
-            }
-          </div>
-        </div>
-      `;
-    });
-    return;
-  }
-
-  const jobsHTML = jobs.map(createJobCard).join('');
-  containers.forEach(container => {
-    container.innerHTML = jobsHTML;
-  });
-
-  // Update results count
-  updateResultsCount(jobs.length);
-}
-
-function createJobCard(job) {
-  const timeAgo = getTimeAgo(job.createdAt);
-  const imageHTML = job.imageUrl ? 
-    `<img src="${job.imageUrl}" alt="${escapeHtml(job.title)}" class="job-image">` : '';
-  
-  const statusHTML = userRole === 'admin' ? 
-    `<span class="status status--${job.status}">${job.status.toUpperCase()}</span>` : '';
-
-  const departments = Array.isArray(job.department) ? 
-    job.department.join(', ') : (job.department || 'Not specified');
-  
-  const levels = Array.isArray(job.level) ? 
-    job.level.join(', ') : (job.level || 'Not specified');
-
-  return `
-    <div class="card job-card" data-job-id="${job.id}">
-      <div class="card__body">
-        ${imageHTML}
-        <div class="job-header">
-          <h3 class="job-title">${escapeHtml(job.title)}</h3>
-          ${statusHTML}
-        </div>
+// Faculty Jobs Application JavaScript
+class FacultyJobsApp {
+    constructor() {
+        this.currentUser = null;
+        this.currentPage = 'home';
+        this.jobs = [];
+        this.userProfiles = {};
+        this.dashboardStats = {};
+        this.recentActivity = [];
+        this.adminStats = {};
         
-        <div class="job-institution">
-          <strong>${escapeHtml(job.institution || '')}</strong>
-        </div>
-        
-        <div class="job-location">
-          📍 ${escapeHtml(job.location || '')}
-        </div>
-        
-        <div class="job-details">
-          <div class="job-detail">
-            <span class="detail-label">Department:</span>
-            <span class="detail-value">${escapeHtml(departments)}</span>
-          </div>
-          
-          <div class="job-detail">
-            <span class="detail-label">Level:</span>
-            <span class="detail-value">${escapeHtml(levels)}</span>
-          </div>
-          
-          ${job.deadline ? `
-            <div class="job-detail">
-              <span class="detail-label">Deadline:</span>
-              <span class="detail-value deadline">${escapeHtml(job.deadline)}</span>
-            </div>
-          ` : ''}
-        </div>
-        
-        <div class="job-meta">
-          <span class="posted-time">Posted ${timeAgo}</span>
-          ${job.viewCount ? `<span class="view-count">${job.viewCount} views</span>` : ''}
-        </div>
-        
-        <div class="job-actions">
-          <button class="btn btn--primary" onclick="viewJobDetails('${job.id}')">
-            View Details
-          </button>
-          ${userRole === 'admin' && job.status === 'pending' ? `
-            <button class="btn btn--success btn--sm" onclick="approveJob('${job.id}')">
-              Approve
-            </button>
-          ` : ''}
-        </div>
-      </div>
-    </div>
-  `;
-}
+        this.initializeData();
+        this.initializeApp();
+    }
 
-function displayNoJobs() {
-  const containers = [
-    document.getElementById('jobsList'),
-    document.getElementById('featuredJobs')
-  ].filter(Boolean);
-
-  containers.forEach(container => {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">📋</div>
-        <h3>No positions available</h3>
-        <p>Be the first to know when new opportunities are posted!</p>
-        ${userRole !== 'candidate' ? 
-          '<button class="btn btn--primary" onclick="showPage(\'post-job\')">Post a Position</button>' : ''
+    initializeApp() {
+        // Wait for DOM to be fully loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                this.setupEventListeners();
+                this.initializeTheme();
+                this.updateUI();
+                this.loadFeaturedJobs(); // Load featured jobs immediately
+            });
+        } else {
+            this.setupEventListeners();
+            this.initializeTheme();
+            this.updateUI();
+            this.loadFeaturedJobs(); // Load featured jobs immediately
         }
-      </div>
-    `;
-  });
-}
-
-/* -------- Authentication Handlers -------- */
-async function handleSignup(event) {
-  event.preventDefault();
-  
-  try {
-    const name = document.getElementById('signupName').value.trim();
-    const email = document.getElementById('signupEmail').value.trim();
-    const password = document.getElementById('signupPassword').value;
-    const role = document.getElementById('signupRole').value;
-    
-    if (!name || !email || !password || !role) {
-      showToast('Please fill in all required fields', 'warning');
-      return;
     }
 
-    console.log('📝 Creating user account...');
-    showToast('Creating your account...', 'info');
+    initializeData() {
+        // Sample data from the provided JSON
+        this.jobs = [
+            {
+                id: "1",
+                title: "Assistant Professor of Computer Science",
+                institution: "Stanford University", 
+                location: "Stanford, CA, USA",
+                departments: ["Computer Science"],
+                levels: ["Assistant Professor"],
+                description: "We are seeking an exceptional Assistant Professor to join our Computer Science department. The successful candidate will contribute to research in artificial intelligence, machine learning, or related fields. Responsibilities include teaching undergraduate and graduate courses, conducting cutting-edge research, and mentoring students.",
+                deadline: "2025-10-15",
+                salaryRange: "$120,000 - $160,000",
+                applicationLink: "https://stanford.edu/apply",
+                approved: true,
+                active: true,
+                postedBy: "employer1",
+                postedByName: "Stanford HR",
+                createdAt: "2025-09-01",
+                institutionType: "Research University",
+                image: null
+            },
+            {
+                id: "2", 
+                title: "Professor of Mathematics",
+                institution: "MIT",
+                location: "Cambridge, MA, USA",
+                departments: ["Mathematics"],
+                levels: ["Full Professor"],
+                description: "MIT Mathematics Department invites applications for a tenured Professor position. We seek candidates with outstanding research records in pure or applied mathematics. The position includes teaching graduate and undergraduate courses and leading research initiatives.",
+                deadline: "2025-09-20",
+                salaryRange: "$180,000 - $220,000", 
+                applicationLink: "https://mit.edu/faculty-search",
+                approved: true,
+                active: true,
+                postedBy: "employer2",
+                postedByName: "MIT Faculty Search",
+                createdAt: "2025-08-28",
+                institutionType: "Research University",
+                image: null
+            },
+            {
+                id: "3",
+                title: "Associate Professor of Physics",
+                institution: "Harvard University",
+                location: "Cambridge, MA, USA", 
+                departments: ["Physics"],
+                levels: ["Associate Professor"],
+                description: "Harvard Physics Department seeks an Associate Professor specializing in condensed matter physics or quantum materials. The position offers excellent research facilities, competitive salary, and opportunities for collaboration with leading scientists worldwide.",
+                deadline: "2025-09-25",
+                salaryRange: "$140,000 - $180,000",
+                applicationLink: "https://harvard.edu/physics-jobs",
+                approved: true,
+                active: true,
+                postedBy: "employer3", 
+                postedByName: "Harvard Physics Dept",
+                createdAt: "2025-09-05",
+                institutionType: "Research University",
+                image: null
+            },
+            {
+                id: "4",
+                title: "Postdoctoral Research Fellow in Biology",
+                institution: "UC Berkeley",
+                location: "Berkeley, CA, USA",
+                departments: ["Biology"],
+                levels: ["Postdoctoral Researcher"],
+                description: "Seeking a motivated postdoctoral researcher to work on computational biology and genomics projects. The fellow will work with large-scale genomic datasets and develop novel algorithms for biological data analysis.",
+                deadline: "2025-10-30",
+                salaryRange: "$60,000 - $70,000",
+                applicationLink: "https://berkeley.edu/postdoc",
+                approved: true,
+                active: true,
+                postedBy: "employer4",
+                postedByName: "UC Berkeley Bio Dept",
+                createdAt: "2025-09-10",
+                institutionType: "Public Institution",
+                image: null
+            },
+            {
+                id: "5",
+                title: "Lecturer in Engineering", 
+                institution: "Caltech",
+                location: "Pasadena, CA, USA",
+                departments: ["Engineering"],
+                levels: ["Lecturer"],
+                description: "Caltech Engineering Division invites applications for a Lecturer position focusing on undergraduate education in mechanical or electrical engineering. Strong teaching skills and industry experience preferred.",
+                deadline: "2025-11-15",
+                salaryRange: "$80,000 - $100,000",
+                applicationLink: "https://caltech.edu/jobs",
+                approved: null,
+                active: true,
+                postedBy: "candidate1",
+                postedByName: "Dr. Jane Smith", 
+                createdAt: "2025-09-12",
+                institutionType: "Private Institution",
+                image: null
+            },
+            {
+                id: "6",
+                title: "Assistant Professor of Psychology",
+                institution: "Yale University",
+                location: "New Haven, CT, USA",
+                departments: ["Psychology"], 
+                levels: ["Assistant Professor"],
+                description: "Yale Psychology Department seeks candidates specializing in cognitive neuroscience or social psychology. The position includes teaching responsibilities and opportunities to establish an independent research program.",
+                deadline: "2025-12-01",
+                salaryRange: "$100,000 - $130,000",
+                applicationLink: "https://yale.edu/psychology",
+                approved: true,
+                active: true,
+                postedBy: "employer5",
+                postedByName: "Yale Psychology",
+                createdAt: "2025-09-08",
+                institutionType: "Private Institution", 
+                image: null
+            },
+            {
+                id: "7",
+                title: "Professor of Economics (Expired)",
+                institution: "Princeton University", 
+                location: "Princeton, NJ, USA",
+                departments: ["Economics"],
+                levels: ["Full Professor"],
+                description: "Princeton Economics Department was seeking a tenured Professor with expertise in macroeconomics or econometrics. This position has now closed.",
+                deadline: "2025-08-30",
+                salaryRange: "$160,000 - $200,000",
+                applicationLink: "https://princeton.edu/econ",
+                approved: true,
+                active: false,
+                archived: true,
+                postedBy: "employer6",
+                postedByName: "Princeton Economics",
+                createdAt: "2025-07-15",
+                institutionType: "Private Institution",
+                image: null
+            }
+        ];
 
-    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-    
-    // Update profile
-    await userCredential.user.updateProfile({
-      displayName: name
-    });
+        this.userProfiles = {
+            candidate1: {
+                id: "candidate1",
+                name: "Dr. Jane Smith",
+                email: "jane.smith@email.com",
+                role: "CANDIDATE", 
+                institution: "Research Institute",
+                verified: true,
+                photo: null
+            },
+            employer1: {
+                id: "employer1",
+                name: "Stanford HR",
+                email: "hr@stanford.edu",
+                role: "EMPLOYER",
+                institution: "Stanford University", 
+                verified: true,
+                photo: null
+            },
+            admin1: {
+                id: "admin1",
+                name: "Admin User",
+                email: "admin@facultyjobs.com",
+                role: "ADMIN",
+                institution: "Faculty Jobs Platform",
+                verified: true, 
+                photo: null
+            }
+        };
 
-    // Create user document
-    await db.collection('users').doc(userCredential.user.uid).set({
-      displayName: name,
-      email: email,
-      role: role,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      isActive: true
-    });
+        // Start with candidate user logged in by default to show all functionality
+        this.currentUser = this.userProfiles.candidate1;
 
-    userRole = role;
-    showToast('Account created successfully! 🎉', 'success');
-    showPage('dashboard');
+        this.dashboardStats = {
+            profileCompletion: 75,
+            activeApplications: 3,
+            savedPositions: 12, 
+            activeAlerts: 5
+        };
 
-  } catch (error) {
-    console.error('❌ Signup error:', error);
-    
-    let message = 'Failed to create account';
-    if (error.code === 'auth/email-already-in-use') {
-      message = 'Email address is already registered';
-    } else if (error.code === 'auth/weak-password') {
-      message = 'Password should be at least 6 characters';
-    }
-    
-    showToast(message, 'error');
-  }
-}
+        this.recentActivity = [
+            {
+                action: "Applied to Professor of Computer Science at Stanford University",
+                time: "2 hours ago",
+                icon: "📝"
+            },
+            {
+                action: "Saved Associate Professor of Mathematics at MIT", 
+                time: "1 day ago",
+                icon: "💾"
+            },
+            {
+                action: "Updated profile information",
+                time: "3 days ago",
+                icon: "👤"
+            }
+        ];
 
-async function handleLogin(event) {
-  event.preventDefault();
-  
-  try {
-    const email = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    
-    if (!email || !password) {
-      showToast('Please enter email and password', 'warning');
-      return;
-    }
-
-    console.log('🔐 Signing in...');
-    showToast('Signing you in...', 'info');
-
-    await auth.signInWithEmailAndPassword(email, password);
-    
-    showToast('Welcome back! 🎉', 'success');
-    showPage('dashboard');
-
-  } catch (error) {
-    console.error('❌ Login error:', error);
-    
-    let message = 'Failed to sign in';
-    if (error.code === 'auth/user-not-found') {
-      message = 'No account found with this email';
-    } else if (error.code === 'auth/wrong-password') {
-      message = 'Incorrect password';
-    } else if (error.code === 'auth/invalid-email') {
-      message = 'Invalid email address';
-    }
-    
-    showToast(message, 'error');
-  }
-}
-
-async function logout() {
-  try {
-    await auth.signOut();
-    showToast('Signed out successfully', 'success');
-    showPage('home');
-  } catch (error) {
-    console.error('❌ Logout error:', error);
-    showToast('Error signing out', 'error');
-  }
-}
-
-/* -------- Job Form Handler -------- */
-async function handlePostJob(event) {
-  event.preventDefault();
-  
-  try {
-    const formData = {
-      title: document.getElementById('jobTitle').value.trim(),
-      institution: document.getElementById('jobInstitution').value.trim(),
-      location: document.getElementById('jobLocation').value.trim(),
-      description: document.getElementById('jobDescription').value.trim(),
-      requirements: document.getElementById('jobRequirements').value.trim(),
-      deadline: document.getElementById('jobDeadline').value
-    };
-
-    // Get selected departments and levels
-    const deptSelect = document.getElementById('jobDepartment');
-    const levelSelect = document.getElementById('jobLevel');
-    
-    formData.department = Array.from(deptSelect.selectedOptions).map(opt => opt.value);
-    formData.level = Array.from(levelSelect.selectedOptions).map(opt => opt.value);
-
-    // Validation
-    if (!formData.title || !formData.institution || !formData.location || 
-        !formData.description || !formData.department.length || !formData.level.length) {
-      showToast('Please fill in all required fields', 'warning');
-      return;
-    }
-
-    showToast('Posting your job...', 'info');
-    
-    const jobId = await submitJob(formData);
-    
-    if (jobId) {
-      document.getElementById('postJobForm').reset();
-      showPage('jobs');
-    }
-
-  } catch (error) {
-    console.error('❌ Post job error:', error);
-    showToast('Failed to post job', 'error');
-  }
-}
-
-/* -------- Enhanced Utility Functions -------- */
-function showPage(pageId) {
-  // Hide all pages
-  document.querySelectorAll('.page').forEach(page => {
-    page.classList.remove('active');
-  });
-
-  // Show target page
-  const targetPage = document.getElementById(pageId);
-  if (targetPage) {
-    targetPage.classList.add('active');
-    
-    // Update navigation active state
-    updateNavigation(pageId);
-    
-    // Load page-specific data
-    if (pageId === 'jobs' || pageId === 'home') {
-      loadJobs();
-    }
-  }
-}
-
-function updateNavigation(activePageId) {
-  document.querySelectorAll('.nav__link').forEach(link => {
-    link.classList.remove('active');
-  });
-  
-  const activeLink = document.querySelector(`[onclick="showPage('${activePageId}')"]`);
-  if (activeLink) {
-    activeLink.classList.add('active');
-  }
-}
-
-function isCurrentPage(pageId) {
-  const page = document.getElementById(pageId);
-  return page && page.classList.contains('active');
-}
-
-function updateUIForAuthenticated() {
-  document.querySelectorAll('.auth-required').forEach(el => {
-    el.style.display = 'block';
-  });
-  
-  document.querySelectorAll('.unauth-required').forEach(el => {
-    el.style.display = 'none';
-  });
-  
-  updateRoleBasedUI();
-}
-
-function updateUIForUnauthenticated() {
-  document.querySelectorAll('.auth-required').forEach(el => {
-    el.style.display = 'none';
-  });
-  
-  document.querySelectorAll('.unauth-required').forEach(el => {
-    el.style.display = 'block';
-  });
-  
-  // Hide all role-specific elements
-  document.querySelectorAll('[class*="role-"]').forEach(el => {
-    el.style.display = 'none';
-  });
-}
-
-function updateRoleBasedUI() {
-  // Hide all role elements first
-  document.querySelectorAll('[class*="role-"]').forEach(el => {
-    el.style.display = 'none';
-  });
-  
-  // Show elements for current role
-  document.querySelectorAll(`.role-${userRole}`).forEach(el => {
-    el.style.display = 'block';
-  });
-}
-
-function updateUserDisplay(userData) {
-  const userNameEl = document.getElementById('userName');
-  const userRoleEl = document.querySelector('.user-role');
-  
-  if (userNameEl) {
-    userNameEl.textContent = userData.displayName || currentUser.email;
-  }
-  
-  if (userRoleEl) {
-    userRoleEl.textContent = userRole.charAt(0).toUpperCase() + userRole.slice(1);
-  }
-}
-
-function updateResultsCount(count) {
-  const resultsCountEl = document.getElementById('resultsCount');
-  if (resultsCountEl) {
-    resultsCountEl.textContent = `${count} position${count !== 1 ? 's' : ''} found`;
-  }
-}
-
-/* -------- Enhanced Toast System -------- */
-function showToast(message, type = 'info', duration = 4000) {
-  console.log(`🍞 Toast: ${message} (${type})`);
-  
-  // Remove existing toasts
-  const existingToasts = document.querySelectorAll('.toast');
-  existingToasts.forEach(toast => toast.remove());
-  
-  // Create toast container if needed
-  let container = document.getElementById('toastContainer');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'toastContainer';
-    container.className = 'toast-container';
-    document.body.appendChild(container);
-  }
-  
-  // Create toast
-  const toast = document.createElement('div');
-  toast.className = `toast toast--${type}`;
-  toast.textContent = message;
-  
-  container.appendChild(toast);
-  
-  // Auto remove
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.classList.add('toast--hide');
-      setTimeout(() => toast.remove(), 300);
-    }
-  }, duration);
-}
-
-/* -------- Utility Functions -------- */
-function getTimeAgo(date) {
-  if (!date) return 'Unknown';
-  
-  const now = new Date();
-  const diff = now - date;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  
-  if (days > 0) return `${days} day${days !== 1 ? 's' : ''} ago`;
-  if (hours > 0) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-  if (minutes > 5) return `${minutes} minutes ago`;
-  return 'Just now';
-}
-
-function escapeHtml(text) {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-function toggleUserDropdown() {
-  const dropdown = document.getElementById('userDropdown');
-  if (dropdown) {
-    dropdown.classList.toggle('show');
-  }
-}
-
-// Close dropdown when clicking outside
-document.addEventListener('click', (event) => {
-  const dropdown = document.getElementById('userDropdown');
-  const userPhoto = document.querySelector('.user-photo');
-  
-  if (dropdown && !dropdown.contains(event.target) && event.target !== userPhoto) {
-    dropdown.classList.remove('show');
-  }
-});
-
-/* -------- Job Actions -------- */
-function viewJobDetails(jobId) {
-  const job = allJobs.find(j => j.id === jobId);
-  if (job) {
-    // For now, just show an alert with job details
-    // In a real app, this would open a detailed view
-    alert(`Job Details:\n\nTitle: ${job.title}\nInstitution: ${job.institution}\nLocation: ${job.location}\n\nDescription: ${job.description}`);
-  }
-}
-
-async function approveJob(jobId) {
-  try {
-    if (userRole !== 'admin') {
-      showToast('Only admins can approve jobs', 'warning');
-      return;
+        this.adminStats = {
+            totalUsers: 1247,
+            activePositions: 89,
+            totalApplications: 3456,
+            newUsersToday: 23
+        };
     }
 
-    await db.collection('jobs').doc(jobId).update({
-      status: 'approved',
-      approvedBy: currentUser.uid,
-      approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    setupEventListeners() {
+        // Navigation - Use event delegation for better reliability
+        document.body.addEventListener('click', (e) => {
+            // Handle page navigation
+            if (e.target.matches('[data-page]') || e.target.closest('[data-page]')) {
+                e.preventDefault();
+                const element = e.target.matches('[data-page]') ? e.target : e.target.closest('[data-page]');
+                const page = element.getAttribute('data-page');
+                this.navigateToPage(page);
+                return;
+            }
 
-    showToast('Job approved successfully! 🎉', 'success');
-    await loadJobs(); // Refresh jobs
+            // Handle theme toggle
+            if (e.target.matches('#theme-toggle') || e.target.closest('#theme-toggle')) {
+                e.preventDefault();
+                this.toggleTheme();
+                return;
+            }
 
-  } catch (error) {
-    console.error('❌ Error approving job:', error);
-    showToast('Failed to approve job', 'error');
-  }
+            // Handle logout
+            if (e.target.matches('#logout-btn') || e.target.closest('#logout-btn')) {
+                e.preventDefault();
+                this.logout();
+                return;
+            }
+
+            // Handle job posting
+            if (e.target.matches('#post-job-btn') || e.target.closest('#post-job-btn')) {
+                e.preventDefault();
+                this.openJobModal();
+                return;
+            }
+
+            // Handle modal close
+            if (e.target.matches('#modal-close-btn, #cancel-job-btn') || e.target.closest('#modal-close-btn, #cancel-job-btn')) {
+                e.preventDefault();
+                this.closeJobModal();
+                return;
+            }
+
+            // Handle photo upload
+            if (e.target.matches('#upload-photo-btn') || e.target.closest('#upload-photo-btn')) {
+                e.preventDefault();
+                const photoInput = document.getElementById('photo-input');
+                if (photoInput) photoInput.click();
+                return;
+            }
+
+            // Handle auth switch
+            if (e.target.matches('#auth-switch') || e.target.closest('#auth-switch')) {
+                e.preventDefault();
+                this.toggleAuthMode();
+                return;
+            }
+        });
+
+        // Form submissions
+        const authForm = document.getElementById('auth-form');
+        if (authForm) {
+            authForm.addEventListener('submit', (e) => this.handleAuth(e));
+        }
+
+        const jobForm = document.getElementById('job-form');
+        if (jobForm) {
+            jobForm.addEventListener('submit', (e) => this.handleJobPost(e));
+        }
+
+        const profileForm = document.getElementById('profile-form');
+        if (profileForm) {
+            profileForm.addEventListener('submit', (e) => this.handleProfileUpdate(e));
+        }
+
+        // Photo upload
+        const photoInput = document.getElementById('photo-input');
+        if (photoInput) {
+            photoInput.addEventListener('change', (e) => this.handlePhotoUpload(e));
+        }
+
+        // Search and filters - Use event delegation
+        document.body.addEventListener('input', (e) => {
+            if (e.target.matches('#job-search')) {
+                this.filterJobs();
+            }
+        });
+
+        document.body.addEventListener('change', (e) => {
+            if (e.target.matches('#department-filter, #level-filter, #location-filter')) {
+                this.filterJobs();
+            }
+        });
+    }
+
+    initializeTheme() {
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-color-scheme', savedTheme);
+        this.updateThemeToggle();
+    }
+
+    toggleTheme() {
+        const currentTheme = document.documentElement.getAttribute('data-color-scheme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-color-scheme', newTheme);
+        try {
+            localStorage.setItem('theme', newTheme);
+        } catch (e) {
+            // Handle localStorage not available
+            console.log('Theme preference cannot be saved');
+        }
+        this.updateThemeToggle();
+        this.showToast(`Switched to ${newTheme} mode`, 'success');
+    }
+
+    updateThemeToggle() {
+        const themeToggle = document.getElementById('theme-toggle');
+        const isDark = document.documentElement.getAttribute('data-color-scheme') === 'dark';
+        if (themeToggle) {
+            themeToggle.textContent = isDark ? '☀️' : '🌙';
+            themeToggle.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+        }
+    }
+
+    navigateToPage(page) {
+        if (!page) return;
+        
+        console.log('Navigating to:', page);
+        
+        // Hide all pages
+        document.querySelectorAll('.page').forEach(p => {
+            p.classList.remove('active');
+        });
+
+        // Show target page
+        const targetPage = document.getElementById(`${page}-page`);
+        if (targetPage) {
+            targetPage.classList.add('active');
+            this.currentPage = page;
+        } else {
+            console.error('Page not found:', `${page}-page`);
+            return;
+        }
+
+        // Update navigation
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.classList.remove('active');
+        });
+        const activeLink = document.querySelector(`[data-page="${page}"].nav-link`);
+        if (activeLink) {
+            activeLink.classList.add('active');
+        }
+
+        // Load page-specific data
+        switch (page) {
+            case 'home':
+                this.loadFeaturedJobs();
+                break;
+            case 'jobs':
+                this.loadAllJobs();
+                this.populateFilters();
+                break;
+            case 'dashboard':
+                this.loadDashboard();
+                break;
+            case 'admin':
+                this.loadAdmin();
+                break;
+            case 'profile':
+                this.loadProfile();
+                break;
+        }
+    }
+
+    updateUI() {
+        // Update body class based on user state
+        document.body.className = ''; // Reset classes
+        
+        if (!this.currentUser) {
+            document.body.classList.add('no-user');
+        } else if (this.currentUser.role === 'ADMIN') {
+            document.body.classList.add('admin-user');
+        }
+
+        // Update user name displays
+        const userNameElement = document.getElementById('user-name');
+        if (userNameElement && this.currentUser) {
+            userNameElement.textContent = this.currentUser.name;
+        }
+    }
+
+    loadFeaturedJobs() {
+        const container = document.getElementById('featured-jobs-list');
+        if (!container) {
+            console.error('Featured jobs container not found');
+            return;
+        }
+
+        // Get jobs closing soon (within 30 days)
+        const today = new Date();
+        const thirtyDaysFromNow = new Date();
+        thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+        const featuredJobs = this.jobs.filter(job => {
+            if (!job.active || !job.approved) return false;
+            const deadline = new Date(job.deadline);
+            return deadline >= today && deadline <= thirtyDaysFromNow;
+        }).slice(0, 3);
+
+        if (featuredJobs.length === 0) {
+            container.innerHTML = '<p class="text-center">No featured jobs available at the moment.</p>';
+            return;
+        }
+
+        container.innerHTML = featuredJobs.map(job => this.createJobCard(job, true)).join('');
+        console.log('Featured jobs loaded:', featuredJobs.length);
+    }
+
+    loadAllJobs() {
+        this.filterJobs();
+    }
+
+    filterJobs() {
+        const container = document.getElementById('jobs-list');
+        const resultsCount = document.getElementById('results-count');
+        if (!container || !resultsCount) return;
+
+        const searchTerm = document.getElementById('job-search')?.value.toLowerCase() || '';
+        const departmentFilter = document.getElementById('department-filter')?.value || '';
+        const levelFilter = document.getElementById('level-filter')?.value || '';
+        const locationFilter = document.getElementById('location-filter')?.value || '';
+
+        let filteredJobs = this.jobs.filter(job => {
+            if (!job.active) return false;
+            
+            // Only show approved jobs to regular users
+            if (this.currentUser?.role !== 'ADMIN' && !job.approved) return false;
+
+            if (searchTerm && !job.title.toLowerCase().includes(searchTerm) && 
+                !job.institution.toLowerCase().includes(searchTerm)) return false;
+            if (departmentFilter && !job.departments.includes(departmentFilter)) return false;
+            if (levelFilter && !job.levels.includes(levelFilter)) return false;
+            if (locationFilter && !job.location.toLowerCase().includes(locationFilter.toLowerCase())) return false;
+
+            return true;
+        });
+
+        resultsCount.textContent = `${filteredJobs.length} position${filteredJobs.length !== 1 ? 's' : ''} found`;
+        container.innerHTML = filteredJobs.map(job => this.createJobCard(job)).join('');
+    }
+
+    populateFilters() {
+        const departments = [...new Set(this.jobs.flatMap(job => job.departments))];
+        const levels = [...new Set(this.jobs.flatMap(job => job.levels))];
+        const locations = [...new Set(this.jobs.map(job => job.location.split(',')[1]?.trim()).filter(Boolean))];
+
+        this.populateSelect('department-filter', departments);
+        this.populateSelect('level-filter', levels);
+        this.populateSelect('location-filter', locations);
+    }
+
+    populateSelect(selectId, options) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+
+        const currentOptions = Array.from(select.options).slice(1).map(opt => opt.value);
+        const newOptions = options.filter(opt => !currentOptions.includes(opt));
+
+        newOptions.forEach(option => {
+            const optionElement = document.createElement('option');
+            optionElement.value = option;
+            optionElement.textContent = option;
+            select.appendChild(optionElement);
+        });
+    }
+
+    createJobCard(job, featured = false) {
+        const today = new Date();
+        const deadline = new Date(job.deadline);
+        const daysUntilDeadline = Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
+        
+        let deadlineText = '';
+        let deadlineClass = '';
+        
+        if (daysUntilDeadline < 0) {
+            deadlineText = 'Expired';
+            deadlineClass = 'expired';
+        } else if (daysUntilDeadline <= 7) {
+            deadlineText = `${daysUntilDeadline} day${daysUntilDeadline !== 1 ? 's' : ''} left`;
+            deadlineClass = 'urgent';
+        } else {
+            deadlineText = deadline.toLocaleDateString();
+            deadlineClass = 'normal';
+        }
+
+        const statusBadge = job.approved === null ? 
+            '<span class="status status-pending">Pending Approval</span>' :
+            job.approved ? '<span class="status status-approved">Approved</span>' : '';
+
+        const adminActions = this.currentUser?.role === 'ADMIN' && job.approved === null ? `
+            <div class="admin-actions">
+                <button class="btn btn--sm btn--primary" onclick="app.approveJob('${job.id}')">Approve</button>
+                <button class="btn btn--sm btn--outline" onclick="app.rejectJob('${job.id}')">Reject</button>
+            </div>
+        ` : '';
+
+        return `
+            <div class="job-card ${job.approved === null ? 'admin-job-card' : ''}">
+                <div class="job-header">
+                    <div>
+                        <h3 class="job-title">${job.title}</h3>
+                        <div class="job-institution">${job.institution}</div>
+                        <div class="job-location">${job.location}</div>
+                    </div>
+                    ${statusBadge}
+                </div>
+                <div class="job-meta">
+                    ${job.departments.map(dept => `<span class="job-tag">${dept}</span>`).join('')}
+                    ${job.levels.map(level => `<span class="job-tag">${level}</span>`).join('')}
+                </div>
+                <div class="job-description">${job.description}</div>
+                <div class="job-footer">
+                    <div>
+                        <div class="job-salary">${job.salaryRange}</div>
+                        <div class="job-deadline ${deadlineClass}">${deadlineText}</div>
+                    </div>
+                    <div class="job-actions">
+                        ${job.applicationLink ? `<a href="${job.applicationLink}" target="_blank" class="btn btn--primary btn--sm">Apply</a>` : ''}
+                        <button class="btn btn--outline btn--sm" onclick="app.saveJob('${job.id}')">Save</button>
+                    </div>
+                </div>
+                ${adminActions}
+            </div>
+        `;
+    }
+
+    saveJob(jobId) {
+        this.showToast('Job saved to your favorites', 'success');
+    }
+
+    approveJob(jobId) {
+        const job = this.jobs.find(j => j.id === jobId);
+        if (job) {
+            job.approved = true;
+            this.showToast(`Job "${job.title}" approved`, 'success');
+            this.loadAdmin(); // Refresh admin view
+        }
+    }
+
+    rejectJob(jobId) {
+        const job = this.jobs.find(j => j.id === jobId);
+        if (job) {
+            job.approved = false;
+            job.active = false;
+            this.showToast(`Job "${job.title}" rejected`, 'warning');
+            this.loadAdmin(); // Refresh admin view
+        }
+    }
+
+    loadDashboard() {
+        // Update progress bar
+        const profileProgress = document.getElementById('profile-progress');
+        if (profileProgress) {
+            profileProgress.style.width = `${this.dashboardStats.profileCompletion}%`;
+        }
+
+        // Update stats
+        const statsMapping = {
+            'active-applications': this.dashboardStats.activeApplications,
+            'saved-positions': this.dashboardStats.savedPositions,
+            'job-alerts': this.dashboardStats.activeAlerts
+        };
+
+        Object.entries(statsMapping).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = value;
+        });
+
+        // Load activity feed
+        this.loadActivityFeed();
+    }
+
+    loadActivityFeed() {
+        const container = document.getElementById('activity-feed');
+        if (!container) return;
+
+        container.innerHTML = this.recentActivity.map(activity => `
+            <div class="activity-item">
+                <div class="activity-icon">${activity.icon}</div>
+                <div class="activity-content">
+                    <div class="activity-action">${activity.action}</div>
+                    <div class="activity-time">${activity.time}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    loadAdmin() {
+        // Update admin stats
+        Object.entries(this.adminStats).forEach(([key, value]) => {
+            const elements = document.querySelectorAll('.admin-stats .stat-number');
+            if (elements.length >= 4) {
+                const mapping = ['totalUsers', 'activePositions', 'totalApplications', 'newUsersToday'];
+                const index = mapping.indexOf(key);
+                if (index !== -1 && elements[index]) {
+                    elements[index].textContent = value.toLocaleString();
+                }
+            }
+        });
+
+        // Load pending jobs
+        this.loadPendingJobs();
+    }
+
+    loadPendingJobs() {
+        const container = document.getElementById('pending-jobs');
+        if (!container) return;
+
+        const pendingJobs = this.jobs.filter(job => job.approved === null && job.active);
+        
+        if (pendingJobs.length === 0) {
+            container.innerHTML = '<p class="text-center">No pending jobs to review.</p>';
+            return;
+        }
+
+        container.innerHTML = pendingJobs.map(job => this.createJobCard(job)).join('');
+    }
+
+    loadProfile() {
+        if (!this.currentUser) return;
+
+        // Populate profile form
+        const fields = ['name', 'email', 'institution'];
+        fields.forEach(field => {
+            const input = document.getElementById(`profile-${field}`);
+            if (input) {
+                input.value = this.currentUser[field] || '';
+            }
+        });
+
+        // Load photo preview
+        const photoPreview = document.getElementById('photo-preview');
+        if (photoPreview && this.currentUser.photo) {
+            photoPreview.innerHTML = `<img src="${this.currentUser.photo}" alt="Profile photo">`;
+        }
+    }
+
+    handleAuth(e) {
+        e.preventDefault();
+        const form = e.target;
+        const email = form.querySelector('#auth-email').value;
+        const password = form.querySelector('#auth-password').value;
+        const nameField = form.querySelector('#auth-name');
+        const isSignUp = nameField && nameField.parentElement && !nameField.parentElement.classList.contains('hidden');
+
+        if (isSignUp) {
+            const name = nameField.value;
+            const role = form.querySelector('#auth-role').value;
+            
+            // Simulate user creation
+            const userId = 'user_' + Date.now();
+            const newUser = {
+                id: userId,
+                name,
+                email,
+                role,
+                institution: '',
+                verified: false,
+                photo: null
+            };
+            
+            this.userProfiles[userId] = newUser;
+            this.currentUser = newUser;
+            
+            this.showToast('Account created successfully!', 'success');
+        } else {
+            // Simulate login - find user by email
+            const user = Object.values(this.userProfiles).find(u => u.email === email);
+            if (user) {
+                this.currentUser = user;
+                this.showToast(`Welcome back, ${user.name}!`, 'success');
+            } else {
+                this.showToast('Invalid credentials', 'error');
+                return;
+            }
+        }
+
+        this.updateUI();
+        this.navigateToPage('dashboard');
+    }
+
+    toggleAuthMode() {
+        const authTitle = document.getElementById('auth-title');
+        const authSubmit = document.getElementById('auth-submit');
+        const authSwitchText = document.getElementById('auth-switch-text');
+        const authSwitch = document.getElementById('auth-switch');
+        const signupFields = document.querySelectorAll('.signup-only');
+
+        if (!authTitle || !authSubmit || !authSwitchText || !authSwitch) return;
+
+        const isSignIn = authTitle.textContent === 'Sign In';
+
+        if (isSignIn) {
+            authTitle.textContent = 'Sign Up';
+            authSubmit.textContent = 'Sign Up';
+            authSwitchText.textContent = 'Already have an account?';
+            authSwitch.textContent = 'Sign In';
+            signupFields.forEach(field => field.classList.remove('hidden'));
+        } else {
+            authTitle.textContent = 'Sign In';
+            authSubmit.textContent = 'Sign In';
+            authSwitchText.textContent = "Don't have an account?";
+            authSwitch.textContent = 'Sign Up';
+            signupFields.forEach(field => field.classList.add('hidden'));
+        }
+    }
+
+    logout() {
+        this.currentUser = null;
+        this.updateUI();
+        this.navigateToPage('home');
+        this.showToast('Logged out successfully', 'success');
+    }
+
+    openJobModal() {
+        const modal = document.getElementById('job-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+        }
+    }
+
+    closeJobModal() {
+        const modal = document.getElementById('job-modal');
+        const form = document.getElementById('job-form');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+        if (form) {
+            form.reset();
+        }
+    }
+
+    handleJobPost(e) {
+        e.preventDefault();
+        const form = e.target;
+        
+        const jobData = {
+            id: 'job_' + Date.now(),
+            title: document.getElementById('job-title').value,
+            institution: document.getElementById('job-institution').value,
+            location: document.getElementById('job-location').value,
+            departments: [document.getElementById('job-department').value],
+            levels: [document.getElementById('job-level').value],
+            description: document.getElementById('job-description').value,
+            deadline: document.getElementById('job-deadline').value,
+            salaryRange: document.getElementById('job-salary').value,
+            applicationLink: document.getElementById('job-link').value,
+            approved: this.currentUser?.role === 'EMPLOYER' ? true : null,
+            active: true,
+            postedBy: this.currentUser?.id,
+            postedByName: this.currentUser?.name,
+            createdAt: new Date().toISOString().split('T')[0],
+            institutionType: 'University',
+            image: null
+        };
+
+        this.jobs.unshift(jobData);
+        this.closeJobModal();
+        
+        const message = this.currentUser?.role === 'EMPLOYER' ? 
+            'Job posted successfully!' : 
+            'Job submitted for review!';
+        this.showToast(message, 'success');
+        
+        if (this.currentPage === 'jobs') {
+            this.loadAllJobs();
+        }
+    }
+
+    handleProfileUpdate(e) {
+        e.preventDefault();
+        if (!this.currentUser) return;
+
+        this.currentUser.name = document.getElementById('profile-name').value;
+        this.currentUser.email = document.getElementById('profile-email').value;
+        this.currentUser.institution = document.getElementById('profile-institution').value;
+        this.currentUser.bio = document.getElementById('profile-bio').value;
+
+        this.showToast('Profile updated successfully!', 'success');
+        this.updateUI();
+    }
+
+    handlePhotoUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Simulate file upload
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const photoPreview = document.getElementById('photo-preview');
+            if (photoPreview) {
+                photoPreview.innerHTML = `<img src="${event.target.result}" alt="Profile photo">`;
+            }
+            
+            if (this.currentUser) {
+                this.currentUser.photo = event.target.result;
+            }
+            
+            this.showToast('Photo uploaded successfully!', 'success');
+        };
+        reader.readAsDataURL(file);
+    }
+
+    showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+
+        container.appendChild(toast);
+
+        // Remove toast after 5 seconds
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 5000);
+    }
 }
 
-/* -------- Search and Filter Functions -------- */
-function searchJobs() {
-  const searchTerm = document.getElementById('jobSearch')?.value.toLowerCase() || '';
-  const department = document.getElementById('departmentFilter')?.value || '';
-  const level = document.getElementById('levelFilter')?.value || '';
-  const location = document.getElementById('locationFilter')?.value || '';
+// Initialize the application
+const app = new FacultyJobsApp();
 
-  let filteredJobs = allJobs.filter(job => {
-    const matchesSearch = !searchTerm || 
-      job.title.toLowerCase().includes(searchTerm) ||
-      job.institution.toLowerCase().includes(searchTerm) ||
-      job.description.toLowerCase().includes(searchTerm);
-
-    const matchesDept = !department || 
-      (Array.isArray(job.department) ? job.department.includes(department) : job.department === department);
-
-    const matchesLevel = !level ||
-      (Array.isArray(job.level) ? job.level.includes(level) : job.level === level);
-
-    const matchesLocation = !location ||
-      job.location.toLowerCase().includes(location.toLowerCase());
-
-    return matchesSearch && matchesDept && matchesLevel && matchesLocation;
-  });
-
-  displayJobs(filteredJobs);
-}
-
-/* -------- Application Initialization -------- */
-document.addEventListener('DOMContentLoaded', async () => {
-  console.log('🚀 FacultyJobs starting...');
-  
-  try {
-    // Initialize Firebase
-    if (!initializeFirebase()) {
-      return;
-    }
-    
-    // Setup authentication listener
-    setupAuthStateListener();
-    
-    isInitialized = true;
-    console.log('✅ Application initialized successfully');
-    
-    // Load initial jobs for home page
-    if (isCurrentPage('home')) {
-      setTimeout(loadJobs, 1000);
-    }
-    
-  } catch (error) {
-    console.error('❌ Application initialization failed:', error);
-    showToast('Failed to initialize application', 'error');
-  }
-});
-
-/* -------- Global Exports -------- */
-window.FacultyJobs = {
-  // Auth functions
-  handleSignup,
-  handleLogin,
-  logout,
-  toggleUserDropdown,
-  
-  // Navigation
-  showPage,
-  
-  // Job functions
-  loadJobs,
-  submitJob,
-  handlePostJob,
-  viewJobDetails,
-  approveJob,
-  searchJobs,
-  
-  // Utility
-  showToast
-};
-
-console.log('✅ Enhanced FacultyJobs application loaded');
+// Make app globally available for event handlers
+window.app = app;
