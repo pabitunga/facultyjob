@@ -3,432 +3,351 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FacultyJobs - Connect with Top Universities Worldwide</title>
-    
-    <!-- Enhanced Meta Tags -->
-    <meta name="description" content="Connect talented academics with prestigious institutions worldwide. Find your perfect academic career opportunity.">
-    <meta name="keywords" content="academic jobs, university jobs, faculty positions, professor jobs, research positions">
-    <meta name="author" content="FacultyJobs">
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
-    
-    <!-- Enhanced CSS -->
-    <link rel="stylesheet" href="style-enhanced.css">
-    
-    <!-- Firebase SDK (compat version) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-compat-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-compat-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-compat-storage.js"></script>
+    <title>Faculty Jobs - Find Your Perfect Academic Position</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Enhanced Header -->
-    <header class="header">
-        <nav class="nav container">
-            <div class="nav__brand">
-                <h2>🎓 FacultyJobs</h2>
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <h2>Faculty Jobs</h2>
             </div>
-            
-            <div class="nav__menu">
-                <a href="#" class="nav__link" onclick="showPage('home')">Home</a>
-                <a href="#" class="nav__link" onclick="showPage('jobs')">Jobs</a>
-                <a href="#" class="nav__link" onclick="showPage('about')">About</a>
-                
-                <!-- Auth-required links -->
-                <a href="#" class="nav__link auth-required role-employer role-admin" onclick="showPage('post-job')" style="display: none;">Post Job</a>
-                <a href="#" class="nav__link auth-required role-admin" onclick="showPage('admin')" style="display: none;">Admin</a>
-                <a href="#" class="nav__link auth-required" onclick="showPage('dashboard')" style="display: none;">Dashboard</a>
+            <div class="nav-links">
+                <a href="#" data-page="home" class="nav-link active">Home</a>
+                <a href="#" data-page="jobs" class="nav-link">Jobs</a>
+                <a href="#" data-page="dashboard" class="nav-link user-only">Dashboard</a>
+                <a href="#" data-page="admin" class="nav-link admin-only">Admin</a>
+                <a href="#" data-page="profile" class="nav-link user-only">Profile</a>
+                <a href="#" data-page="auth" class="nav-link guest-only">Sign In</a>
+                <button id="logout-btn" class="btn btn--outline btn--sm user-only">Logout</button>
+                <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">🌙</button>
             </div>
-            
-            <div class="nav__auth">
-                <!-- Unauthenticated state -->
-                <div class="unauth-required">
-                    <button class="btn btn--outline" onclick="showPage('login')">Sign In</button>
-                    <button class="btn btn--primary" onclick="showPage('signup')">Sign Up</button>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+        
+        <!-- Home Page -->
+        <div id="home-page" class="page active">
+            <section class="hero">
+                <div class="container">
+                    <div class="hero-content">
+                        <h1>Find Your Perfect Academic Position</h1>
+                        <p class="hero-subtitle">Discover opportunities at leading universities worldwide. Join thousands of academics in finding their next career move.</p>
+                        <div class="hero-actions">
+                            <button class="btn btn--primary btn--lg" data-page="jobs">Browse Jobs</button>
+                            <button class="btn btn--outline btn--lg guest-only" data-page="auth">Get Started</button>
+                        </div>
+                    </div>
                 </div>
-                
-                <!-- Authenticated state -->
-                <div class="nav__user auth-required" style="display: none;">
-                    <div class="user-menu">
-                        <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face" 
-                             alt="User" class="user-photo" onclick="toggleUserDropdown()">
-                        <div class="user-dropdown" id="userDropdown">
-                            <div class="user-info">
-                                <span id="userName">User Name</span>
-                                <span class="user-role">Candidate</span>
-                            </div>
-                            <button class="dropdown-item" onclick="showPage('profile')">Profile</button>
-                            <button class="dropdown-item" onclick="logout()">Sign Out</button>
+            </section>
+
+            <section class="featured-jobs">
+                <div class="container">
+                    <h2>Closing Soon - Featured Positions</h2>
+                    <div class="jobs-grid" id="featured-jobs-list">
+                        <!-- Featured jobs will be populated by JavaScript -->
+                    </div>
+                    <div class="section-action">
+                        <button class="btn btn--secondary" data-page="jobs">View All Jobs</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="platform-benefits">
+                <div class="container">
+                    <h2>Why Choose Faculty Jobs?</h2>
+                    <div class="benefits-grid">
+                        <div class="benefit-card">
+                            <div class="benefit-icon">🎯</div>
+                            <h3>Targeted Search</h3>
+                            <p>Advanced filters to find positions that match your expertise and career goals.</p>
+                        </div>
+                        <div class="benefit-card">
+                            <div class="benefit-icon">🏛️</div>
+                            <h3>Top Institutions</h3>
+                            <p>Positions from leading universities and research institutions worldwide.</p>
+                        </div>
+                        <div class="benefit-card">
+                            <div class="benefit-icon">📊</div>
+                            <h3>Career Insights</h3>
+                            <p>Track your applications and get insights to improve your academic career.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Jobs Page -->
+        <div id="jobs-page" class="page">
+            <div class="container">
+                <div class="jobs-header">
+                    <h1>Academic Positions</h1>
+                    <button class="btn btn--primary user-only" id="post-job-btn">Post a Job</button>
+                </div>
+
+                <div class="jobs-filters">
+                    <div class="search-bar">
+                        <input type="text" id="job-search" class="form-control" placeholder="Search jobs...">
+                    </div>
+                    <div class="filter-controls">
+                        <select id="department-filter" class="form-control">
+                            <option value="">All Departments</option>
+                        </select>
+                        <select id="level-filter" class="form-control">
+                            <option value="">All Levels</option>
+                        </select>
+                        <select id="location-filter" class="form-control">
+                            <option value="">All Locations</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="jobs-results">
+                    <div class="results-info">
+                        <span id="results-count">0 positions found</span>
+                    </div>
+                    <div class="jobs-grid" id="jobs-list">
+                        <!-- Jobs will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Page -->
+        <div id="dashboard-page" class="page user-only">
+            <div class="container">
+                <div class="dashboard-header">
+                    <h1>Dashboard</h1>
+                    <p>Welcome back, <span id="user-name">Dr. Jane Smith</span></p>
+                </div>
+
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <h3>Profile Completion</h3>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="profile-progress" style="width: 75%"></div>
+                        </div>
+                        <span>75%</span>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Applications</h3>
+                        <div class="stat-number" id="active-applications">3</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Saved Positions</h3>
+                        <div class="stat-number" id="saved-positions">12</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Job Alerts</h3>
+                        <div class="stat-number" id="job-alerts">5</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-content">
+                    <div class="recent-activity">
+                        <h2>Recent Activity</h2>
+                        <div id="activity-feed">
+                            <!-- Activity feed will be populated by JavaScript -->
                         </div>
                     </div>
                 </div>
             </div>
-        </nav>
-    </header>
+        </div>
 
-    <!-- Enhanced Home Page -->
-    <div id="home" class="page active">
-        <section class="hero">
+        <!-- Admin Page -->
+        <div id="admin-page" class="page admin-only">
             <div class="container">
-                <div class="hero__content">
-                    <h1 class="hero__title">Connect with Top Universities Worldwide</h1>
-                    <p class="hero__subtitle">
-                        Advance your academic career with AI-powered job matching and connect with prestigious institutions globally.
-                    </p>
-                    <div class="hero__actions">
-                        <button class="btn btn--primary btn--lg" onclick="showPage('jobs')">
-                            Explore Opportunities
-                        </button>
-                        <button class="btn btn--outline btn--lg unauth-required" onclick="showPage('signup')">
-                            Join Today
-                        </button>
-                        <button class="btn btn--outline btn--lg auth-required role-employer role-admin" onclick="showPage('post-job')" style="display: none;">
-                            Post a Position
-                        </button>
-                    </div>
+                <div class="admin-header">
+                    <h1>Admin Panel</h1>
+                    <p>Manage jobs and oversee platform activity</p>
                 </div>
-            </div>
-        </section>
 
-        <!-- Featured Positions -->
-        <section class="container">
-            <div class="section__header">
-                <h2 class="section__title">Featured Positions</h2>
-                <p class="section__subtitle">Jobs whose application deadlines are coming up soon</p>
-            </div>
-            <div class="positions-grid" id="featuredJobs">
-                <!-- Featured jobs will be loaded here -->
-            </div>
-        </section>
+                <div class="admin-stats">
+                    <div class="stat-card">
+                        <h3>Total Users</h3>
+                        <div class="stat-number">1,247</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Positions</h3>
+                        <div class="stat-number">89</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Applications</h3>
+                        <div class="stat-number">3,456</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>New Users Today</h3>
+                        <div class="stat-number">23</div>
+                    </div>
+                </div>
 
-        <!-- Why Choose Us -->
-        <section class="container">
-            <div class="section__header">
-                <h2 class="section__title">Why Choose FacultyJobs?</h2>
-                <p class="section__subtitle">Discover opportunities at top universities worldwide</p>
-            </div>
-            <div class="benefits-grid">
-                <div class="card">
-                    <div class="card__body">
-                        <div class="benefit-icon">🎯</div>
-                        <h3>Targeted Matching</h3>
-                        <p>AI-powered job matching connects you with positions that fit your expertise and career goals.</p>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card__body">
-                        <div class="benefit-icon">🌍</div>
-                        <h3>Global Reach</h3>
-                        <p>Access opportunities from prestigious universities and institutions worldwide.</p>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card__body">
-                        <div class="benefit-icon">⚡</div>
-                        <h3>Fast Applications</h3>
-                        <p>Streamlined application process saves time and gets you noticed by top recruiters.</p>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card__body">
-                        <div class="benefit-icon">📈</div>
-                        <h3>Career Growth</h3>
-                        <p>Tools and resources to help you advance your academic and research career.</p>
+                <div class="admin-content">
+                    <h2>Pending Job Approvals</h2>
+                    <div id="pending-jobs">
+                        <!-- Pending jobs will be populated by JavaScript -->
                     </div>
                 </div>
             </div>
-        </section>
-    </div>
+        </div>
 
-    <!-- Enhanced Jobs Page -->
-    <div id="jobs" class="page">
-        <div class="container">
-            <div class="page-header">
-                <h1>Academic Positions</h1>
-                <p>Find your perfect academic opportunity</p>
-            </div>
-
-            <!-- Enhanced Search and Filters -->
-            <div class="search-filters">
-                <div class="search-bar">
-                    <input type="text" id="jobSearch" class="form-control" placeholder="Search jobs by title, institution, or keywords...">
-                    <button class="btn btn--primary" onclick="searchJobs()">Search</button>
+        <!-- Profile Page -->
+        <div id="profile-page" class="page user-only">
+            <div class="container">
+                <div class="profile-header">
+                    <h1>Profile Settings</h1>
                 </div>
-                
-                <div class="filters">
-                    <select id="departmentFilter" class="form-control">
-                        <option value="">All Departments</option>
+
+                <div class="profile-content">
+                    <div class="profile-photo-section">
+                        <div class="photo-upload">
+                            <div class="photo-preview" id="photo-preview">
+                                <span>No photo</span>
+                            </div>
+                            <input type="file" id="photo-input" accept="image/*" class="file-input">
+                            <button class="btn btn--outline" id="upload-photo-btn">Upload Photo</button>
+                        </div>
+                    </div>
+
+                    <form class="profile-form" id="profile-form">
+                        <div class="form-group">
+                            <label class="form-label">Full Name</label>
+                            <input type="text" class="form-control" id="profile-name" value="Dr. Jane Smith">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" id="profile-email" value="jane.smith@email.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Institution</label>
+                            <input type="text" class="form-control" id="profile-institution" value="Research Institute">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Bio</label>
+                            <textarea class="form-control" id="profile-bio" rows="4" placeholder="Tell us about yourself..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn--primary">Save Changes</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auth Page -->
+        <div id="auth-page" class="page guest-only">
+            <div class="container">
+                <div class="auth-container">
+                    <div class="auth-header">
+                        <h1 id="auth-title">Sign In</h1>
+                        <p>Access your account to apply for positions</p>
+                    </div>
+
+                    <form class="auth-form" id="auth-form">
+                        <div class="form-group">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" id="auth-email" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" id="auth-password" required>
+                        </div>
+                        <div class="form-group signup-only hidden">
+                            <label class="form-label">Full Name</label>
+                            <input type="text" class="form-control" id="auth-name">
+                        </div>
+                        <div class="form-group signup-only hidden">
+                            <label class="form-label">Role</label>
+                            <select class="form-control" id="auth-role">
+                                <option value="CANDIDATE">Job Seeker</option>
+                                <option value="EMPLOYER">Employer</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn--primary btn--full-width" id="auth-submit">Sign In</button>
+                    </form>
+
+                    <div class="auth-toggle">
+                        <p>
+                            <span id="auth-switch-text">Don't have an account?</span>
+                            <a href="#" id="auth-switch">Sign Up</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Job Post Modal -->
+    <div id="job-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Post a Job</h2>
+                <button class="modal-close" id="modal-close-btn">&times;</button>
+            </div>
+            <form id="job-form" class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Job Title</label>
+                    <input type="text" class="form-control" id="job-title" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Institution</label>
+                    <input type="text" class="form-control" id="job-institution" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Location</label>
+                    <input type="text" class="form-control" id="job-location" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Department</label>
+                    <select class="form-control" id="job-department" required>
+                        <option value="">Select Department</option>
                         <option value="Computer Science">Computer Science</option>
                         <option value="Mathematics">Mathematics</option>
                         <option value="Physics">Physics</option>
                         <option value="Biology">Biology</option>
                         <option value="Engineering">Engineering</option>
-                        <option value="Business">Business</option>
-                        <option value="Medicine">Medicine</option>
+                        <option value="Psychology">Psychology</option>
+                        <option value="Economics">Economics</option>
                     </select>
-                    
-                    <select id="levelFilter" class="form-control">
-                        <option value="">All Levels</option>
-                        <option value="Professor">Professor</option>
-                        <option value="Associate Professor">Associate Professor</option>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Level</label>
+                    <select class="form-control" id="job-level" required>
+                        <option value="">Select Level</option>
                         <option value="Assistant Professor">Assistant Professor</option>
+                        <option value="Associate Professor">Associate Professor</option>
+                        <option value="Full Professor">Full Professor</option>
                         <option value="Lecturer">Lecturer</option>
-                        <option value="Research Fellow">Research Fellow</option>
-                    </select>
-                    
-                    <select id="locationFilter" class="form-control">
-                        <option value="">All Locations</option>
-                        <option value="United States">United States</option>
-                        <option value="United Kingdom">United Kingdom</option>
-                        <option value="Canada">Canada</option>
-                        <option value="Australia">Australia</option>
-                        <option value="Germany">Germany</option>
-                        <option value="Singapore">Singapore</option>
+                        <option value="Postdoctoral Researcher">Postdoctoral Researcher</option>
                     </select>
                 </div>
-            </div>
-
-            <!-- Jobs Results -->
-            <div class="jobs-results">
-                <div class="results-header">
-                    <h2>Available Positions</h2>
-                    <span class="results-count" id="resultsCount">Loading...</span>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" id="job-description" rows="4" required></textarea>
                 </div>
-                <div class="positions-grid" id="jobsList">
-                    <!-- Jobs will be loaded here -->
+                <div class="form-group">
+                    <label class="form-label">Salary Range</label>
+                    <input type="text" class="form-control" id="job-salary" placeholder="e.g., $80,000 - $120,000">
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Enhanced Auth Pages -->
-    <div id="signup" class="page auth-page">
-        <div class="container">
-            <div class="auth-card">
-                <div class="auth-header">
-                    <h2>Create Your Account</h2>
-                    <p>Start your academic career journey</p>
+                <div class="form-group">
+                    <label class="form-label">Application Deadline</label>
+                    <input type="date" class="form-control" id="job-deadline" required>
                 </div>
-                
-                <form class="auth-form" id="signupForm" onsubmit="handleSignup(event)">
-                    <div class="form-group">
-                        <label class="form-label">Full Name</label>
-                        <input type="text" id="signupName" class="form-control" placeholder="Dr. Jane Smith" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Email Address</label>
-                        <input type="email" id="signupEmail" class="form-control" placeholder="jane@university.edu" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Password</label>
-                        <input type="password" id="signupPassword" class="form-control" placeholder="••••••••" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">I am a:</label>
-                        <select id="signupRole" class="form-control" required>
-                            <option value="">Select your role</option>
-                            <option value="candidate">Job Seeker (Academic/Researcher)</option>
-                            <option value="employer">Employer (University/Institution)</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="photo-upload">
-                            <span class="form-label">Profile Photo</span>
-                            <input type="file" id="signupPhoto" class="photo-input" accept="image/*">
-                            <div class="photo-preview" id="signupPhotoPreview">
-                                <div class="photo-placeholder">
-                                    <span>📷</span>
-                                    <p>Click to upload photo</p>
-                                </div>
-                            </div>
-                        </label>
-                    </div>
-                    
-                    <button type="submit" class="btn btn--primary btn--full-width btn--lg">
-                        Create Account
-                    </button>
-                </form>
-                
-                <p class="auth-footer">
-                    Already have an account? 
-                    <a href="#" onclick="showPage('login')">Sign in</a>
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <div id="login" class="page auth-page">
-        <div class="container">
-            <div class="auth-card">
-                <div class="auth-header">
-                    <h2>Sign In</h2>
-                    <p>Access your FacultyJobs account</p>
+                <div class="form-group">
+                    <label class="form-label">Application Link</label>
+                    <input type="url" class="form-control" id="job-link" placeholder="https://...">
                 </div>
-                
-                <form class="auth-form" id="loginForm" onsubmit="handleLogin(event)">
-                    <div class="form-group">
-                        <label class="form-label">Email Address</label>
-                        <input type="email" id="loginEmail" class="form-control" placeholder="your@email.edu" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Password</label>
-                        <input type="password" id="loginPassword" class="form-control" placeholder="••••••••" required>
-                    </div>
-                    
-                    <button type="submit" class="btn btn--primary btn--full-width btn--lg">
-                        Sign In
-                    </button>
-                </form>
-                
-                <p class="auth-footer">
-                    Don't have an account? 
-                    <a href="#" onclick="showPage('signup')">Create one</a>
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Enhanced Post Job Page -->
-    <div id="post-job" class="page auth-required" style="display: none;">
-        <div class="container">
-            <div class="page-header">
-                <h1>Post a New Position</h1>
-                <p>Find the perfect candidate for your institution</p>
-            </div>
-
-            <form class="post-job-form two-col-form" id="postJobForm" onsubmit="handlePostJob(event)">
-                <div class="form-section">
-                    <h3>Basic Information</h3>
-                    <div class="form-grid two-col">
-                        <div class="form-group">
-                            <label class="form-label">Job Title *</label>
-                            <input type="text" id="jobTitle" class="form-control" placeholder="Professor of Computer Science" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Institution *</label>
-                            <input type="text" id="jobInstitution" class="form-control" placeholder="Stanford University" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Department *</label>
-                            <select id="jobDepartment" class="form-control" multiple size="4" required>
-                                <option value="Computer Science">Computer Science</option>
-                                <option value="Mathematics">Mathematics</option>
-                                <option value="Physics">Physics</option>
-                                <option value="Biology">Biology</option>
-                                <option value="Engineering">Engineering</option>
-                                <option value="Business">Business</option>
-                                <option value="Medicine">Medicine</option>
-                                <option value="Other">Other</option>
-                            </select>
-                            <div class="helper-text">Hold Ctrl/Cmd to select multiple departments</div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Position Level *</label>
-                            <select id="jobLevel" class="form-control" multiple size="4" required>
-                                <option value="Professor">Professor</option>
-                                <option value="Associate Professor">Associate Professor</option>
-                                <option value="Assistant Professor">Assistant Professor</option>
-                                <option value="Lecturer">Lecturer</option>
-                                <option value="Research Fellow">Research Fellow</option>
-                                <option value="Postdoc">Postdoc</option>
-                            </select>
-                            <div class="helper-text">Hold Ctrl/Cmd to select multiple levels</div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Location *</label>
-                            <input type="text" id="jobLocation" class="form-control" placeholder="Stanford, CA, USA" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Application Deadline</label>
-                            <input type="date" id="jobDeadline" class="form-control">
-                        </div>
-                        
-                        <div class="form-group col-span-2">
-                            <label class="form-label">Job Description *</label>
-                            <textarea id="jobDescription" class="form-control" rows="6" placeholder="Describe the position, requirements, and what makes it exciting..." required></textarea>
-                        </div>
-                        
-                        <div class="form-group col-span-2">
-                            <label class="form-label">Requirements</label>
-                            <textarea id="jobRequirements" class="form-control" rows="4" placeholder="PhD in relevant field, research experience, etc."></textarea>
-                        </div>
-                        
-                        <div class="form-group col-span-2">
-                            <label class="photo-upload">
-                                <span class="form-label">Institution/Department Image (Optional)</span>
-                                <input type="file" id="jobImage" class="photo-input" accept="image/*">
-                                <div class="photo-preview" id="jobImagePreview">
-                                    <div class="photo-placeholder">
-                                        <span>🏛️</span>
-                                        <p>Add an image to make your posting stand out</p>
-                                    </div>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn--outline" onclick="resetJobForm()">Clear Form</button>
-                    <button type="submit" class="btn btn--primary btn--lg">Post Position</button>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn--outline" id="cancel-job-btn">Cancel</button>
+                    <button type="submit" class="btn btn--primary">Post Job</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Dashboard, Admin, Profile, and About pages... -->
-    <!-- (Additional pages would be added here following the same enhanced structure) -->
-
-    <!-- Enhanced Footer -->
-    <footer class="footer">
-        <div class="container">
-            <div class="footer__content">
-                <div class="footer__brand">
-                    <h3>🎓 FacultyJobs</h3>
-                    <p>Connecting academia worldwide</p>
-                </div>
-                <div class="footer__links">
-                    <div class="footer__column">
-                        <h4>Platform</h4>
-                        <a href="#" onclick="showPage('jobs')">Browse Jobs</a>
-                        <a href="#" onclick="showPage('about')">About Us</a>
-                        <a href="#" onclick="showPage('contact')">Contact</a>
-                    </div>
-                    <div class="footer__column">
-                        <h4>For Employers</h4>
-                        <a href="#" onclick="showPage('post-job')">Post Jobs</a>
-                        <a href="#" onclick="showPage('pricing')">Pricing</a>
-                        <a href="#" onclick="showPage('resources')">Resources</a>
-                    </div>
-                    <div class="footer__column">
-                        <h4>Support</h4>
-                        <a href="#" onclick="showPage('help')">Help Center</a>
-                        <a href="#" onclick="showPage('privacy')">Privacy</a>
-                        <a href="#" onclick="showPage('terms')">Terms</a>
-                    </div>
-                </div>
-            </div>
-            <div class="footer__bottom">
-                <p>&copy; 2025 FacultyJobs. All rights reserved.</p>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Toast Container -->
-    <div class="toast-container" id="toastContainer"></div>
-
-    <!-- Enhanced JavaScript -->
-    <script src="app-enhanced.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
